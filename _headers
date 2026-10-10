@@ -1,0 +1,21 @@
+/ort/*.wasm
+  Content-Type: application/wasm
+
+/ort/*.mjs
+  Content-Type: text/javascript
+
+/models/*
+  Content-Type: application/octet-stream
+  Cache-Control: public, max-age=31536000
+
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/version.json
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/index.html
+  Cache-Control: no-cache, must-revalidate
+
+/app.js
+  Cache-Control: no-cache, must-revalidate

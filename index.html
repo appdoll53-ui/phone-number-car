@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<style>
+#meter-apartment-controls{position:static;display:grid;grid-template-columns:64px minmax(0,1fr) 64px;gap:8px;margin:16px 0 8px;align-items:stretch}
+#meter-apartment-controls>button{background:#303c49;color:#c8d0dc;border:1px solid #455364;font-size:20px}
+#meter-apartment-main{border-radius:12px;display:flex;flex-direction:column;padding:6px}
+#meter-apartment-main button{position:static!important;inset:auto!important;transform:none!important;width:100%!important;margin:0;background:transparent;border:0;color:inherit;box-shadow:none}
+#meter-apartment-number{display:flex;flex-direction:column;align-items:center;gap:2px}#meter-apartment-value{font-size:34px;line-height:1.15}#meter-camera{font-size:20px;padding:10px}
+#meter-apartment-history{display:grid;gap:5px;margin-bottom:12px}#meter-apartment-history>div{display:flex;justify-content:space-between;gap:12px;padding:8px 12px;background:#28323e;border-radius:8px}#meter-apartment-history .meter-history-reading{font-size:22px;font-weight:700}
+
+#meter-apartment-controls{grid-template-columns:55px minmax(0,1fr) 55px;margin-top:12px;gap:7px}#meter-apartment-controls>button{padding:8px;font-size:19px}#meter-apartment-main{padding:0;overflow:hidden}#meter-apartment-number{flex-direction:row;justify-content:center;gap:8px;padding:5px 8px;color:#102d27!important;border-bottom:1px solid rgba(15,42,35,.4)!important;min-height:30px}#meter-apartment-number .sub{color:#15392f;font-weight:700;font-size:12px}#meter-apartment-value{font-size:23px}#meter-camera{padding:8px!important;min-height:36px;font-weight:700;color:#0b2921!important}
+#meter-photo,#meter-reading-field{transition:opacity .15s}
+.meter-dialog{width:min(340px,calc(100vw - 32px));box-sizing:border-box;border:1px solid #526578;border-radius:18px;padding:22px;background:#25313d;color:#eef4fb;box-shadow:0 20px 80px #0008}.meter-dialog::backdrop{background:#0009}.meter-dialog h2{margin:0 0 12px;font-size:21px}.meter-dialog input{box-sizing:border-box;width:100%;font-size:30px;text-align:center;background:#f4f7fa;color:#172535;border:1px solid #8194a8;border-radius:10px;padding:10px}.meter-dialog .row{margin-top:16px}.meter-dialog p{line-height:1.5}.meter-data-actions{align-items:stretch}.meter-data-actions button{flex:1;font-size:13px}
+</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#252b33" />
+  <title>Номера</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css?v=83" />
+</head>
+<body>
+  <main class="app">
+    <header>
+      <div>
+        <h1>Номера</h1>
+        <div class="sub" id="net">распознавание на телефоне</div>
+        <div class="sub" id="app-version">Версия 83</div>
+      </div>
+      <nav class="header-actions app-tabs" aria-label="Разделы"><button id="open-car" class="nav-chip active" type="button" aria-label="Машина" aria-pressed="true">🚗</button><button id="open-meter" class="nav-chip" type="button" aria-label="Счётчики" aria-pressed="false">🔢</button><button id="open-settings" class="nav-chip" type="button" aria-label="Настройки" aria-pressed="false">⚙️</button></nav>
+    </header>
+
+    <div id="car-subnav"><button class="nav-chip" id="open-history" type="button" aria-expanded="false">История</button></div>
+    <div id="main-screen">
+    <button class="primary" id="open-cam" type="button" disabled>Сфотографировать номер</button>
+
+    <section class="card" id="number-card">
+      <div class="hidden" id="crop-card">
+        <img id="crop-preview" alt="Фото номера" />
+      </div>
+      <div class="hidden" id="crop-actions">
+        <div class="help">Текст PaddleOCR до проверки формата</div><div id="ocr-raw-text" aria-live="polite"></div>
+      </div>
+      <div id="plate-widget">
+        <button class="plate-mask empty" id="plate-mask" type="button" aria-label="Редактировать номер">Введите номер машины<br>или сфотографируйте</button>
+        <input class="hidden" id="plate" type="text" autocomplete="off" autocapitalize="characters" enterkeyhint="search" aria-label="Номер автомобиля" placeholder="А 123 ВС 77" />
+      </div>
+      <div class="status" id="recognition-status" aria-live="polite"></div>
+      <div class="status" id="search-status" aria-live="polite"></div>
+      <div class="hidden" id="missing-offer"><span id="missing-question"></span><button id="defer-yes" type="button">Да</button></div>
+    </section>
+
+    <section class="card hidden" id="result"></section>
+    <section class="card hidden" id="conflict-card"><h2>Изменения на разных телефонах</h2><div id="conflict-list"></div></section>
+
+    <section class="card hidden" id="waiting-card">
+      <label>Отложенные номера машин</label>
+      <p class="help">Номер машины распознан или введён вручную, но телефон по нему не найден. Эти записи ждут ввода номера телефона.</p>
+      <div id="waiting-list" class="help">Пока пусто.</div>
+    </section>
+
+    <div id="contact-home">
+
+    </div>
+
+    <section class="card">
+      <div class="row">
+        <button class="secondary" id="sync" type="button">Синхронизировать локальную базу с Google Таблицей</button>
+      </div>
+      <div class="help" id="last-sync" aria-live="polite">Синхронизация ещё не выполнялась</div>
+      <div class="status" id="pending-status" aria-live="polite"></div>
+      <div class="status" id="sync-status"></div>
+    </section>
+
+    </div>
+    <section class="hidden" id="search-history">
+      <h2>История поиска за сегодня</h2><div id="history-list"></div>
+    </section>
+    <section class="card hidden" id="settings">
+      <h2>Настройки</h2>
+<p class="plate-format-notice">Распознаются только номера формата:<br><strong>А 123 ВС 77</strong> или <strong>А 123 ВС 154</strong></p>
+      <h3>Модели распознавания</h3>
+<button id="load-plate-models" class="secondary" type="button">Загрузить модели распознавания автомобильных номеров</button>
+<input id="plate-model-files" type="file" accept=".onnx,application/octet-stream" multiple hidden>
+<div id="plate-import-status" class="help" aria-live="polite"></div>
+<div class="model-state"><span>plate_det.onnx</span><span id="model-det-status">Проверка…</span></div>
+<div class="model-state"><span>paddle_det.onnx</span><span id="model-paddle-det-status">Проверка…</span></div>
+<div class="model-state"><span>paddle_rec.onnx</span><span id="model-paddle-rec-status">Проверка…</span></div>
+<div class="status" id="model-status" aria-live="polite"></div><button class="secondary hidden" id="retry-models-settings" type="button">Подготовить загруженные модели</button>
+<button id="load-meter-models" class="secondary" type="button">Загрузить модели распознавания счётчиков</button>
+<input id="meter-model-files" type="file" accept=".onnx,application/octet-stream" multiple hidden>
+<div id="meter-import-status" class="help" aria-live="polite"></div><div id="settings-meter-status" class="status" aria-live="polite"></div>
+<p class="help">Выберите один или несколько файлов .onnx из папки телефона. Модели сохраняются для работы офлайн.</p>
+      <h3>Как работает распознавание</h3>
+      <ol class="help recognition-steps">
+        <li>Съёмка фотографии камерой телефона.</li>
+        <li>Вырезка области выбранной экранной рамки.</li>
+        <li>Поиск детектором таблички номера. Если подходящая табличка не найдена, используется область рамки.</li>
+        <li>Поиск текстовых областей моделью PaddleOCR.</li>
+        <li>Чтение букв и цифр в каждой области. Исходный текст показывается под фото до проверки формата.</li>
+        <li>Сборка номера: для обычного — слева направо; для двухстрочного — верхняя строка, нижние буквы, регион справа. Служебная надпись RUS исключается из номера.</li>
+        <li>Проверка полного российского формата и отображение номера.</li>
+        <li>Поиск телефона в локальной базе по полному совпадению номера, включая регион.</li>
+      </ol>
+      <p class="help">Если номер не прочитался, пробуем повороты фото. Результат удачного варианта, а при неудаче исходного положения, показывается под фото. Обычный текст тоже можно увидеть здесь, но детектор таблички может ограничить область чтения. Всё распознавание после загрузки моделей работает на телефоне без отправки фото на сервер.</p>
+      <h3>Обновление приложения</h3>
+      <div class="status hidden" id="offline-status" aria-live="polite"></div>
+      <button class="secondary" id="refresh-app" type="button">Проверить обновления</button>
+      <div class="status" id="update-status" aria-live="polite"></div>
+      <h3>Синхронизация</h3>
+      <label for="script-url">Ссылка Apps Script</label>
+      <input class="small" id="script-url" type="text" placeholder="https://script.google.com/macros/s/..../exec" style="text-transform:none;font-size:14px" />
+      <label for="script-secret">Секрет, тот же что в скрипте</label>
+      <input class="small" id="script-secret" type="text" placeholder="длинная случайная строка" style="text-transform:none;font-size:16px" />
+      <h3>Сообщения</h3>
+      <label for="message-text">Текст сообщения по умолчанию для SMS и Telegram</label>
+      <textarea id="message-text" rows="4" placeholder="Введите текст сообщения"></textarea>
+      <button class="secondary" id="save-settings" type="button">Сохранить настройки</button>
+      <div class="status" id="settings-status" aria-live="polite"></div>
+      <div class="help">
+        <p>Настройка нужна при первом создании таблицы для приложения. При каждой синхронизации повторять её не нужно. Поиск работает по копии базы на телефоне.</p>
+        <ol>
+          <li>Создайте Google Таблицу. На первом листе колонки: номер, имя, телефон, id, добавлено. В пустой таблице скрипт создаст заголовки сам.</li>
+          <li>Откройте «Расширения → Apps Script» и вставьте содержимое Code.gs из архива.</li>
+          <li>Придумайте длинную случайную строку: это ваш секрет. В первой строке скрипта замените текст внутри кавычек после SECRET на эту строку. Такой же секрет вставьте в поле «Секрет» выше.</li>
+          <li>Сохраните скрипт. Выберите «Развернуть → Новое развертывание», тип «Веб-приложение», запуск от вашего имени, доступ «Все». Нажмите «Развернуть» и разрешите доступ к таблице.</li>
+          <li>Скопируйте URL веб-приложения, заканчивающийся на /exec, в поле «Ссылка Apps Script» выше и нажмите «Сохранить настройки».</li>
+        </ol>
+      </div>
+      <p class="help">После первой загрузки приложение открывается с телефона без ожидания сайта. Для обновления и синхронизации нужен доступ к серверу. Чтобы редактирование телефонов сохранялось в таблице, обновите Code.gs из архива и версию развертывания Apps Script, сохранив свой секрет и ссылку /exec.</p>
+      <p class="help">«Проверить обновления» загружает новую версию приложения. Справочник, очередь, настройки и скачанные модели сохраняются.</p>
+      <button class="ghost" id="install" type="button">Создать ярлык приложения на рабочем столе</button>
+    </section>
+<section class="card hidden" id="meter-screen">
+<div class="row"><h2>Счётчик</h2><button id="close-meter" type="button" class="ghost">Закрыть счётчик</button></div>
+
+<div id="meter-status" class="status" aria-live="polite"></div>
+<div id="meter-photo" class="apartment-no-photo"><span id="meter-photo-placeholder">Фото счётчика</span><img id="meter-preview" alt="Окошко показаний счётчика"><div id="meter-marker-confidence" class="sub" aria-live="polite"></div></div>
+<div id="meter-reading-field"><div id="meter-digit-row" aria-hidden="true"></div><input id="meter-reading" type="text" inputmode="decimal" autocomplete="off" placeholder="Показание" aria-describedby="meter-review"></div>
+
+
+<div id="meter-apartment-controls"><button id="meter-apartment-minus" class="secondary" type="button" aria-label="Предыдущая квартира">−1</button><div id="meter-apartment-main" class="primary"><button id="meter-apartment-number" type="button" aria-label="Ввести номер квартиры"><span class="sub">Квартира</span><strong id="meter-apartment-value">1</strong></button><button id="meter-camera" type="button">Снять</button></div><button id="meter-apartment-plus" class="secondary" type="button" aria-label="Следующая квартира">+1</button></div><div class="meter-count-control"><label for="meter-expected-count">Цифр до запятой</label><button id="meter-count-down" type="button" aria-label="Уменьшить количество цифр">▼</button><output id="meter-expected-count">6</output><button id="meter-count-up" type="button" aria-label="Увеличить количество цифр">▲</button></div><div id="meter-apartment-history" aria-label="Последние четыре показания"></div>
+<div id="meter-review" class="help"></div><div id="meter-fast-raw" class="help"></div>
+
+<div class="help">Обученный алгоритм находит окошко и разделитель, Fast-OCR читает цифры. Модели сохраняются офлайн. Поддерживаются meter_pose.onnx и meter_detector.onnx.</div>
+
+<label class="meter-option"><input id="meter-fraction-model" type="checkbox">Обученный алгоритм поиска разделителя (краска, красный фон цифры или точка на дисплее)</label><div class="help">Включено: разделитель meter_pose.onnx сопоставляется с последней цифрой. Выключено: последняя прочитанная цифра всегда дробная.</div>
+<div class="row meter-data-actions"><button id="meter-export-readings" class="secondary" type="button">Выгрузить базу в Excel</button><button id="meter-clear-readings" class="ghost" type="button">Удалить показания</button></div><button id="meter-annotations" class="secondary" type="button">Разметка</button><label class="meter-option"><input id="meter-show-separator" type="checkbox">Отображать разделитель в распознанных показаниях</label><div id="meter-stats" class="help"></div>
+<label for="meter-candidate" class="hidden" id="meter-candidate-label">Область показаний</label><select id="meter-candidate" class="hidden"></select>
+</section>
+<section class="card hidden" id="meter-label-screen">
+<div class="row"><h2>Разметка окошка и разделителя</h2><button id="meter-label-close" class="ghost" type="button">Закрыть разметку</button></div>
+<div id="meter-label-status" class="status" aria-live="polite"></div>
+<button id="meter-upload-photos" class="secondary" type="button">Загрузить фото для разметки</button><input id="meter-photo-files" type="file" accept="image/*" multiple hidden><div class="help">Загрузите фотографии. Окошко и разделитель предлагает обученный алгоритм. Поправьте рамки и подтвердите разметку. Все снятые фото добавляются сюда автоматически.</div>
+<div class="row"><button id="meter-label-window" class="secondary" type="button" aria-pressed="true">Окошко показаний</button><button id="meter-label-separator" class="ghost" type="button" aria-pressed="false">Разделитель</button></div>
+<div class="help">Разметьте окошко и разделитель. Краска, точка дисплея и красный фон цифры — один класс «Разделитель». Для окошка ручки сверху; для разделителя — сбоку. Рамки ограничены краями фото. Предложения алгоритма нужно подтвердить.</div>
+
+<input id="file" type="file" accept="image/*" hidden><canvas id="view" width="800" height="480"></canvas><pre id="out">Загрузите фото.</pre>
+<div class="row"><button id="meter-label-prev" class="ghost" type="button">Назад</button><button id="keep" class="primary" type="button">Сохранить и далее</button><button id="meter-label-next" class="ghost" type="button">Далее</button></div>
+<div class="row"><button id="meter-label-empty" class="secondary" type="button">Окошка нет</button><button id="meter-label-unclear" class="ghost" type="button">Неясно</button><button id="meter-label-delete" class="ghost" type="button">Удалить фото</button></div>
+<div class="row"><button id="drop" class="ghost" type="button">Убрать рамку</button><button id="save" class="secondary" type="button">Скачать JSON разметки</button><button id="wipe" class="ghost" type="button">Очистить разметку</button></div>
+<button id="meter-label-export" class="secondary" type="button">Выгрузить фото и разметку ZIP</button>
+</section>
+  </main>
+
+  <div class="cam hidden" id="cam">
+    <div class="cam-view" id="cam-view">
+      <video id="video" playsinline autoplay muted></video>
+    </div>
+    <canvas id="camera-shade" aria-hidden="true"></canvas>
+    <button class="plate-frame" id="plate-frame" type="button" aria-label="Обычный номер" aria-pressed="true"><span>Держите номер целиком в рамке</span></button>
+    <button class="plate-frame square-frame inactive" id="square-frame" type="button" aria-label="Двухстрочный номер" aria-pressed="false"><span>Двухстрочный</span></button>
+    <div id="meter-collect-status" class="hidden" role="status"></div>
+    <div id="zoom-info" style="position:absolute;bottom:24px;left:12px;right:12px;z-index:5;color:#fff;text-align:center;font-size:12px;text-shadow:0 1px 4px #000;pointer-events:none"></div>
+    <div class="cam-hint">Можно горизонтально. Рамка должна совпасть с табличкой.</div>
+    <div class="cam-controls">
+      <button class="secondary hidden" id="torch" type="button" aria-pressed="false">Фонарик</button>
+      <button class="shot" id="shot" type="button">Снять</button>
+      <button class="ghost cam-close" id="close-cam" type="button">Закрыть</button>
+    </div>
+    <div class="zoom-side" id="zoom-control">
+      <input id="zoom-slider" type="range" min="1" max="10" step="0.01" value="1" aria-label="Масштаб камеры" aria-orientation="vertical" />
+      <span id="zoom-label">1×</span>
+    </div>
+  </div>
+
+  <div id="meter-count-warning" class="hidden" role="alertdialog" aria-modal="true" aria-labelledby="meter-count-warning-text"><div><button id="meter-count-warning-close" type="button" aria-label="Закрыть предупреждение">×</button><p id="meter-count-warning-text"></p></div></div>
+  <div class="wait hidden" id="wait">
+    <div class="spinner" id="wait-spinner"></div>
+    <div id="wait-text" role="status" aria-live="polite">Подготавливаем распознавание…</div>
+    <div id="wait-actions" class="hidden">
+      <button class="secondary" id="retry-models" type="button">Повторить</button>
+      <button class="ghost" id="continue-manual" type="button">Продолжить с ручным вводом</button>
+    </div>
+  </div>
+  <dialog id="contact-dialog" aria-label="Контакт автомобиля">
+    <section class="card hidden" id="add-card">
+      <div class="editor-plate-heading"><div class="help">Номер машины</div><div id="add-target"></div></div>
+      <input class="contact-input" id="add-phone" type="tel" inputmode="tel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" name="manual-contact-phone" placeholder="Введите номер телефона" aria-label="Введите номер телефона" />
+      <div class="editor-bottom-row">
+        <input class="contact-input" id="add-name" type="text" autocomplete="off" placeholder="Имя" aria-label="Имя" />
+        <div class="row editor-actions"><button class="secondary" id="save-local" type="button">Сохранить</button><button class="ghost" id="cancel-contact" type="button">Отмена</button></div>
+      </div>
+      <div class="status" id="contact-status" aria-live="polite"></div>
+    </section>
+  </dialog>
+  
+  <dialog id="delete-dialog" aria-labelledby="delete-title">
+    <h2 id="delete-title">Удалить из отложенных?</h2>
+    <div id="delete-plate"></div>
+    <div class="status" id="delete-status" aria-live="polite"></div>
+    <div class="row">
+      <button class="secondary" id="delete-yes" type="button">Да</button>
+      <button class="ghost" id="delete-no" type="button">Нет</button>
+    </div>
+  </dialog>
+<dialog id="meter-apartment-dialog" class="meter-dialog"><form id="meter-apartment-form"><h2>Номер квартиры</h2><input id="meter-apartment-input" type="text" inputmode="numeric" pattern="[0-9]+" maxlength="6" autocomplete="off" aria-label="Номер квартиры" required><div id="meter-apartment-error" class="status"></div><div class="row"><button class="primary" type="submit">Применить</button><button id="meter-apartment-cancel" class="ghost" type="button">Отмена</button></div></form></dialog>
+<dialog id="meter-delete-dialog" class="meter-dialog"><h2>Удалить показания?</h2><p>Если вы не выгрузили базу в Excel, записанные показания будут потеряны. Отменить удаление нельзя.</p><p class="help">Фотографии и разметка останутся.</p><div class="row"><button id="meter-delete-confirm" class="secondary" type="button">Удалить показания</button><button id="meter-delete-cancel" class="ghost" type="button">Отмена</button></div></dialog>
+
+  <script src="ort/ort.wasm.min.js"></script>
+  <script src="app.js?v=83"></script>
+  <script src="meter.js?v=83"></script>
+  <script src="meter-markup.js?v=83"></script>
+</body>
+</html>
