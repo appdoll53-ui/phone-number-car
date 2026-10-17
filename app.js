@@ -1,4 +1,4 @@
-const APP_VERSION = "99";
+const APP_VERSION = "100";
 const MODEL_FILES = {"plate_det.onnx": {"bytes": 12238119, "sha256": "85d236280a1301ad98907947d284951dd2b20c23a6786ff50f7e6a8ec515bd50"}, "paddle_det.onnx": {"bytes": 4826518, "sha256": "a431985659dc921974177a95adcfbb90fd9e51989a5e04d70d0b75f597b6e61d"}, "paddle_rec.onnx": {"bytes": 7848423, "sha256": "b5f833dfc5d0eb71da397b4efa06ebeee9b431b690a47d6af40d77d8eabc557f"}};
 
 const ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_";
@@ -410,6 +410,7 @@ async function startModels() {
 }
 
 function setAppSection(section) {
+  try{localStorage.setItem("lastAppSection",section);}catch(_){}
   if(state.stream) closeCamera();
   if(section!=='meter' && typeof meterState!=='undefined'){state.cameraMode='plate';meterState.collecting=false;$('cam').classList.remove('meter-camera');}
   for(const [id,name] of [['main-screen','car'],['settings','settings'],['meter-screen','meter']]) $(id).classList.toggle('hidden',section!==name);

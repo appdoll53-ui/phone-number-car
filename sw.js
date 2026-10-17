@@ -1,8 +1,8 @@
-const VERSION = "99";
+const VERSION = "100";
 const CACHE = "nomera-full-v" + VERSION;
 const MODEL_CACHE = "nomera-models";
-const CORE = ["./index.html", "./styles.css?v=99", "./app.js?v=99",
-  "./meter.js?v=99", "./meter-markup.js?v=99", "./meter-worker.js?v=99", "./meter-models.json?v=99",
+const CORE = ["./index.html", "./styles.css?v=100", "./app.js?v=100",
+  "./meter.js?v=100", "./meter-markup.js?v=100", "./meter-worker.js?v=100", "./meter-models.json?v=100",
   "./ort/ort.webgpu.min.js", "./ort/ort-wasm-simd-threaded.jsep.mjs", "./ort/ort-wasm-simd-threaded.jsep.wasm",
   "./ort/ort.wasm.min.js", "./ort/ort-wasm-simd-threaded.wasm", "./ort/ort-wasm-simd-threaded.mjs"];
 const OPTIONAL = ["./manifest.json", "./icons/icon-192.png", "./icons/icon-512.png"];

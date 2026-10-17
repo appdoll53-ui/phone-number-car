@@ -15,7 +15,7 @@ function nearbyMeterRecords(records,number){
 }
 function renderMeterApartments(){
  $('meter-apartment-value').textContent=String(meterApartments.number);
- $('meter-camera').textContent='Сфотографировать';
+ $('meter-camera').textContent=meterApartments.history.some(r=>r.apartment===meterApartments.number&&r.previewBlob)?'Переснять':'Снять';
  const summary=$('meter-apartment-summary');if(summary)summary.textContent=meterApartmentSummary();
  const list=$('meter-apartment-history');list.replaceChildren();
  for(const record of nearbyMeterRecords(meterApartments.history,meterApartments.number)){
@@ -59,7 +59,7 @@ function failMeterWorker(error){
 }
 function meterRPC(type,data={},transfer=[]) {
   if(!meterState.worker) {
-    meterState.worker=new Worker('meter-worker.js?v=99');
+    meterState.worker=new Worker('meter-worker.js?v=100');
     meterState.worker.onmessage=({data:r})=>{
       if(r.fatalError){failMeterWorker(new Error(r.fatalError));return;}
       const p=meterState.pending.get(r.id); if(!p)return;
@@ -73,7 +73,7 @@ function meterRPC(type,data={},transfer=[]) {
   return new Promise((resolve,reject)=>{meterState.pending.set(id,{resolve,reject});try{meterState.worker.postMessage({id,type,...data},transfer);}catch(e){meterState.pending.delete(id);reject(e);}});
 }
 async function meterManifest(){
- if(!meterState.manifest){const r=await fetch('meter-models.json?v=99');if(!r.ok)throw new Error('Не удалось загрузить настройки распознавания');meterState.manifest=await r.json();}
+ if(!meterState.manifest){const r=await fetch('meter-models.json?v=100');if(!r.ok)throw new Error('Не удалось загрузить настройки распознавания');meterState.manifest=await r.json();}
  return meterState.manifest;
 }
 async function validMeterFile(buf,meta){
@@ -182,7 +182,7 @@ async function setMeterPhoto(canvas){
  image.src=url;
  if(typeof image.decode==='function'){try{await image.decode();}catch(_){}}
  else if(!image.complete)await new Promise(resolve=>{image.addEventListener('load',resolve,{once:true});image.addEventListener('error',resolve,{once:true});});
- $('meter-photo').classList.remove('hidden','apartment-no-photo');
+ $('meter-photo').classList.remove('hidden','apartment-no-photo');syncMeterVisiblePhoto();
 }
 function meterMarkedPreview(result){
  const canvas=meterCanvas(result.processed),ctx=canvas.getContext('2d'),boxes=(result.overlayDetections||result.markerDetections||[]);
@@ -193,7 +193,7 @@ function meterMarkedPreview(result){
  for(const box of boxes){ctx.strokeStyle=ctx.fillStyle=box.classId===1?'#69e4ab':'#ffd447';ctx.beginPath();box.points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();ctx.stroke();
  }
  ctx.strokeStyle='#6daaff';ctx.lineWidth=Math.max(1.5,canvas.width/350);
- for(const digit of result.digitBoxes||[]){ctx.strokeRect(digit.left*canvas.width-4,digit.top*canvas.height-4,(digit.right-digit.left)*canvas.width+8,(digit.bottom-digit.top)*canvas.height+8);}
+ // Digit rectangles are drawn at display scale, with 2 mm of padding.
 
  ctx.restore();return canvas;
 }
@@ -217,8 +217,27 @@ function layoutMeterPreview(){
  const saved=meterState.previewLayout,exact=saved&&saved.viewportWidth===innerWidth&&saved.viewportHeight===innerHeight;
  const width=exact?saved.width:Math.min(innerWidth*.88,720)+6,height=exact?saved.height:width/2.25,target=exact?saved.top:innerHeight*.37-height/2;
  photo.style.width=width+'px';photo.style.height=height+'px';photo.style.marginTop=Math.max(0,target-photo.getBoundingClientRect().top)+'px';
- requestAnimationFrame(drawMeterDigitLinks);
+ syncMeterVisiblePhoto();requestAnimationFrame(drawMeterDigitLinks);
  // Apartment controls are in normal page flow and scroll with the content.
+}
+function fittedMeterPhoto(naturalWidth,naturalHeight,availableWidth,availableHeight){
+ const scale=Math.min(availableWidth/naturalWidth,availableHeight/naturalHeight);
+ return {width:naturalWidth*scale,height:naturalHeight*scale};
+}
+function syncMeterVisiblePhoto(){
+ const photo=$('meter-photo'),image=$('meter-preview');
+ if(photo.classList.contains('apartment-no-photo')||!image.naturalWidth)return;
+ const size=fittedMeterPhoto(image.naturalWidth,image.naturalHeight,photo.clientWidth,photo.clientHeight);
+ image.style.width=size.width+'px';image.style.height=size.height+'px';photo.style.setProperty('--meter-visible-photo-height',size.height+'px');
+ requestAnimationFrame(drawMeterDigitLinks);
+}
+function drawMeterDigitBoxes(){
+ const overlay=$('meter-digit-boxes');overlay.replaceChildren();
+ const photo=$('meter-photo'),image=$('meter-preview'),result=meterState.result;
+ if(photo.classList.contains('apartment-no-photo')||!image.getAttribute('src')||!result?.processed)return;
+ const rect=image.getBoundingClientRect(),parent=photo.getBoundingClientRect(),pad=2*96/25.4;
+ overlay.style.left=(rect.left-parent.left)+'px';overlay.style.top=(rect.top-parent.top)+'px';overlay.style.width=rect.width+'px';overlay.style.height=rect.height+'px';overlay.setAttribute('viewBox','0 0 '+rect.width+' '+rect.height);
+ for(const box of result.digitBoxes||[]){const mark=document.createElementNS('http://www.w3.org/2000/svg','rect');mark.setAttribute('x',box.left*rect.width-pad);mark.setAttribute('y',box.top*rect.height-pad);mark.setAttribute('width',(box.right-box.left)*rect.width+pad*2);mark.setAttribute('height',(box.bottom-box.top)*rect.height+pad*2);overlay.append(mark);}
 }
 function meterWholeDigits(result){
  const digits=result.displayDigits||[];return Number.isInteger(result.decimalIndex)?digits.slice(0,result.decimalIndex):digits;
@@ -239,7 +258,7 @@ function renderMeterDigits(digits,slots=digits.length){
  requestAnimationFrame(drawMeterDigitLinks);
 }
 function drawMeterDigitLinks(){
- const svg=$('meter-digit-links');svg.replaceChildren();
+ const svg=$('meter-digit-links');svg.replaceChildren();drawMeterDigitBoxes();
  if(meterState.readingEdited||$('meter-screen').classList.contains('hidden')||document.activeElement===$('meter-reading'))return;
  const r=meterState.result,boxes=r?.digitBoxes||[],image=$('meter-preview'),cells=$('meter-digit-row').children;
  if(!boxes.length||!r.processed||!image.getAttribute('src'))return;
@@ -250,7 +269,7 @@ function drawMeterDigitLinks(){
  for(let i=0;i<Math.min(boxes.length,cells.length);i++){
   if(cells[i].style.visibility==='hidden')continue;
   const box=boxes[i],cell=cells[i].getBoundingClientRect(),line=document.createElementNS('http://www.w3.org/2000/svg','line');
-  line.setAttribute('x1',left+(box.left+box.right)/2*w);line.setAttribute('y1',top+box.bottom*h+4*scale);
+  line.setAttribute('x1',left+(box.left+box.right)/2*w);line.setAttribute('y1',Math.min(top+box.bottom*h+2*96/25.4,field.top));
   line.setAttribute('x2',cell.left+cell.width/2);line.setAttribute('y2',field.top);
   svg.append(line);
  }
@@ -463,8 +482,8 @@ $('meter-reading').addEventListener('focus',drawMeterDigitLinks);
 $('meter-reading').addEventListener('blur',()=>requestAnimationFrame(drawMeterDigitLinks));
 $('meter-screen').addEventListener('scroll',drawMeterDigitLinks,{passive:true});
 window.addEventListener('resize',()=>requestAnimationFrame(drawMeterDigitLinks));
-new ResizeObserver(()=>requestAnimationFrame(drawMeterDigitLinks)).observe($('meter-photo'));
-$('meter-preview').addEventListener('load',()=>requestAnimationFrame(drawMeterDigitLinks));
+new ResizeObserver(syncMeterVisiblePhoto).observe($('meter-photo'));
+$('meter-preview').addEventListener('load',syncMeterVisiblePhoto);
 
 async function cleanupOldMeterModels(){
  const cache=await caches.open('nomera-meter-models');
@@ -480,3 +499,10 @@ function retryMeterModelUpdate(){
 }
 window.addEventListener('online',retryMeterModelUpdate);
 setTimeout(()=>loadMeter().catch(e=>setStatus('meter-status',e.message,'bad')),0);
+
+// Restore only the last main section; never resume an open camera or dialog.
+meterApartments.ready.then(()=>{
+ let section='car';try{section=localStorage.getItem('lastAppSection')||'car';}catch(_){}
+ if(!['car','meter','settings'].includes(section))section='car';
+ setAppSection(section);if(section==='meter')layoutMeterPreview();
+}).catch(()=>{});

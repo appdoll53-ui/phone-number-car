@@ -615,3 +615,17 @@ input[type="text"],input[type="tel"],#message-text{background:#fff;color:var(--t
 #meter-reading-field{border:2px solid #111;border-radius:8px;margin-top:3px;margin-bottom:10px}
 #meter-reading-field #meter-reading{border-radius:6px}
 #meter-clear-readings{background:#e8eff7;color:#203e5c;border:1px solid #b9cadd}
+
+/* v100: the photo stays bottom-aligned while the reading field keeps its position. */
+#meter-photo:not(.apartment-no-photo) #meter-preview{position:absolute;left:50%;bottom:0;transform:translateX(-50%);max-width:100%;max-height:100%;object-fit:contain;margin:0}
+#meter-photo:not(.apartment-no-photo) #meter-marker-confidence{bottom:var(--meter-visible-photo-height,100%);margin-bottom:4px}
+#meter-photo.apartment-no-photo #meter-preview{position:static;transform:none}
+#meter-digit-boxes{position:absolute;pointer-events:none;overflow:visible;z-index:2}
+#meter-digit-boxes rect{fill:none;stroke:#6daaff;stroke-width:1.5}
+#meter-digit-links line{stroke-width:3.9}
+#meter-apartment-number{background:#3980b2!important;border-bottom-color:#d7eaf9!important}
+#install{background:#e8eff7;color:#203e5c;border:1px solid #b9cadd}
+#number-card{display:flex;flex-direction:column;min-height:300px}
+#number-card>#crop-card{margin-top:auto;flex-shrink:0}
+#number-card>.status:empty{display:none}
+#number-card>#plate-widget,#number-card>#open-cam{flex-shrink:0}
