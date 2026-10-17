@@ -2,6 +2,29 @@
 const meterState={worker:null,pending:new Map(),sequence:0,source:null,original:null,processed:null,last:null,busy:false,buffers:{},model:'fastocr',engine:'fastocr',detector:null,queue:[],processing:false,collecting:false};
 const meterApartments={number:Math.max(1,Number(localStorage.getItem('meter-apartment-number'))||1),snapshot:null,history:[],selection:0,ready:null};
 try{const saved=JSON.parse(localStorage.getItem('meter-apartment-history')||'[]');if(Array.isArray(saved))meterApartments.history=saved.filter(r=>Number.isInteger(r.apartment)&&r.apartment>0&&typeof r.reading==='string');}catch(_){}
+function meterRetentionDays(){const value=Number(localStorage.getItem('meter-retention-days'));return Number.isInteger(value)&&value>=1&&value<=3650?value:5;}
+function meterExpired(record,now=Date.now(),days=meterRetentionDays()){
+ const timestamp=Date.parse(record.capturedAt||record.created||'');return Number.isFinite(timestamp)&&now>=timestamp+days*86400000;
+}
+let meterRetentionCleaning=false;
+async function purgeExpiredMeterData(refresh=true){
+ if(meterRetentionCleaning||meterState.busy||state.shooting||meterState.processing||meterState.labelImporting)return;
+ meterRetentionCleaning=true;
+ try{
+ const now=Date.now(),days=meterRetentionDays(),readings=await meterReadingStore('getAll'),photos=await meterStore('getAll');let removed=0;
+ for(const record of readings)if(meterExpired(record,now,days)){await meterReadingStore('delete',record.apartment);removed++;}
+ for(const photo of photos)if(meterExpired(photo,now,days)){await meterStore('delete',photo.id);removed++;}
+ const remaining=await meterReadingStore('getAll');
+ meterApartments.history=remaining;
+ localStorage.setItem('meter-apartment-history',JSON.stringify(remaining.map(({apartment,reading,snapshotId,created,capturedAt})=>({apartment,reading,snapshotId,created,capturedAt}))));
+ if(refresh&&removed){
+ const collection=await meterStore('getAll');meterLabels.rows=collection.sort((a,b)=>String(a.created).localeCompare(String(b.created)));meterLabels.index=Math.min(meterLabels.index,Math.max(0,collection.length-1));
+ meterState.queue=meterState.queue.filter(id=>collection.some(item=>item.id===id));
+ await selectMeterApartment(meterApartments.number,true);await updateMeterCollection();
+ if(!$('meter-label-screen').classList.contains('hidden'))await showMeterLabel();
+ }
+ }finally{meterRetentionCleaning=false;}
+}
 function meterApartmentSummary(){
  const numbers=[...new Set(meterApartments.history.map(r=>r.apartment))].sort((a,b)=>a-b);if(!numbers.length)return 'Отснятых квартир нет.';
  const gaps=[];for(let i=1;i<numbers.length;i++){const from=numbers[i-1]+1,to=numbers[i]-1;if(from<=to)gaps.push(from===to?String(from):from+'–'+to);}
@@ -23,8 +46,9 @@ function renderMeterApartments(){
  }
 }
 async function initMeterReadings(){
- const records=await meterReadingStore('getAll');
+ let records=await meterReadingStore('getAll');
  for(const old of meterApartments.history)if(!records.some(r=>r.apartment===old.apartment)){await meterReadingStore('put',old);records.push(old);}
+ await purgeExpiredMeterData(false);records=await meterReadingStore('getAll');
  meterApartments.history=records.sort((a,b)=>String(b.created||'').localeCompare(String(a.created||'')));renderMeterApartments();await selectMeterApartment(meterApartments.number,true);
 }
 async function selectMeterApartment(number,force=false){
@@ -36,8 +60,8 @@ async function selectMeterApartment(number,force=false){
  meterApartments.snapshot=record?{id:record.snapshotId||crypto.randomUUID(),apartment:value}:null;
  $('meter-reading').value=record?.reading||'';renderMeterDigits(Array.from(record?.reading||''));$('meter-reading').disabled=false;
  $('meter-reading-field').classList.toggle('apartment-no-reading',!record);$('meter-photo').classList.add('apartment-no-photo');$('meter-preview').removeAttribute('src');
- $('meter-marker-confidence').textContent='';$('meter-fast-raw').textContent='';$('meter-review').textContent=record?meterApartmentSummary():'Квартира '+value+': показание ещё не снято.';$('meter-stats').textContent='';renderMeterApartments();
- if(record?.previewBlob){const bitmap=await createImageBitmap(record.previewBlob);if(token!==meterApartments.selection){bitmap.close();return;}const c=document.createElement('canvas');c.width=bitmap.width;c.height=bitmap.height;c.getContext('2d').drawImage(bitmap,0,0);bitmap.close();meterState.result={located:true,processed:meterImage(c),overlayDetections:record.overlayDetections||[],decimalIndex:record.decimalIndex,digitBoxes:record.digitBoxes||[],displayDigits:record.displayDigits||[],text:record.ocrText||''};meterState.readingEdited=Boolean(record.readingEdited);await setMeterPhoto(meterMarkedPreview(meterState.result));if(token===meterApartments.selection){$('meter-photo').classList.remove('apartment-no-photo');renderMeterDigits(Array.from(record.reading));}}
+ $('meter-marker-confidence').textContent='';$('meter-fast-raw').textContent='';$('meter-review').textContent=record?'':'Квартира '+value+': показание ещё не снято.';$('meter-stats').textContent='';renderMeterApartments();
+ if(record?.previewBlob){const bitmap=await createImageBitmap(record.previewBlob);if(token!==meterApartments.selection){bitmap.close();return;}const c=document.createElement('canvas');c.width=bitmap.width;c.height=bitmap.height;c.getContext('2d').drawImage(bitmap,0,0);bitmap.close();meterState.result={located:true,separatorRect:record.separatorFound?{found:true}:null,processed:meterImage(c),overlayDetections:record.overlayDetections||[],decimalIndex:record.decimalIndex,digitBoxes:record.digitBoxes||[],displayDigits:record.displayDigits||[],text:record.ocrText||''};meterState.readingEdited=Boolean(record.readingEdited);await setMeterPhoto(meterMarkedPreview(meterState.result));if(token===meterApartments.selection){$('meter-photo').classList.remove('apartment-no-photo');renderMeterDigits(Array.from(record.reading));}}
 }
 async function recordMeterApartment(reading){
  if(!/^\d*$/.test(reading))return;const shot=meterApartments.snapshot||(meterApartments.snapshot={id:crypto.randomUUID(),apartment:meterApartments.number});
@@ -47,11 +71,12 @@ async function recordMeterApartment(reading){
  const record={...previous,apartment:shot.apartment,reading,readingEdited:edited,snapshotId:shot.id,created:new Date().toISOString()};
  if(!edited)record.autoReading=reading;
  if(source){record.rawBlob=await meterBlob(source);record.rawWidth=source.width;record.rawHeight=source.height;}
- record.needsReview=!/^\d+$/.test(reading)||!result?.located||Boolean(edited&&reading!==record.autoReading);
+ record.separatorFound=Boolean(result?.separatorRect);record.capturedAt=previous?.capturedAt||previous?.created||record.created;
+ record.needsReview=!/^\d+$/.test(reading)||!result?.located||!record.separatorFound||Boolean(edited&&reading!==record.autoReading);
  if(result?.processed){record.previewBlob=await meterBlob(meterCanvas(result.processed));record.overlayDetections=result.overlayDetections||[];record.decimalIndex=result.decimalIndex;record.digitBoxes=result.digitBoxes||[];record.displayDigits=result.displayDigits||[];record.ocrText=result.text||'';record.readingEdited=Boolean(edited);}
  await meterReadingStore('put',record);
  meterApartments.history=[record,...meterApartments.history.filter(r=>r.apartment!==shot.apartment)];
- try{localStorage.setItem('meter-apartment-history',JSON.stringify(meterApartments.history.map(({apartment,reading,snapshotId,created})=>({apartment,reading,snapshotId,created}))));}catch(_){}renderMeterApartments();await syncMeterReviewPhoto(record);
+ try{localStorage.setItem('meter-apartment-history',JSON.stringify(meterApartments.history.map(({apartment,reading,snapshotId,created,capturedAt})=>({apartment,reading,snapshotId,created,capturedAt}))));}catch(_){}renderMeterApartments();await syncMeterReviewPhoto(record);
 }
 function failMeterWorker(error){
  const worker=meterState.worker;meterState.worker=null;meterState.backend=null;meterState.markerMode=null;
@@ -59,7 +84,7 @@ function failMeterWorker(error){
 }
 function meterRPC(type,data={},transfer=[]) {
   if(!meterState.worker) {
-    meterState.worker=new Worker('meter-worker.js?v=100');
+    meterState.worker=new Worker('meter-worker.js?v=101');
     meterState.worker.onmessage=({data:r})=>{
       if(r.fatalError){failMeterWorker(new Error(r.fatalError));return;}
       const p=meterState.pending.get(r.id); if(!p)return;
@@ -73,7 +98,7 @@ function meterRPC(type,data={},transfer=[]) {
   return new Promise((resolve,reject)=>{meterState.pending.set(id,{resolve,reject});try{meterState.worker.postMessage({id,type,...data},transfer);}catch(e){meterState.pending.delete(id);reject(e);}});
 }
 async function meterManifest(){
- if(!meterState.manifest){const r=await fetch('meter-models.json?v=100');if(!r.ok)throw new Error('Не удалось загрузить настройки распознавания');meterState.manifest=await r.json();}
+ if(!meterState.manifest){const r=await fetch('meter-models.json?v=101');if(!r.ok)throw new Error('Не удалось загрузить настройки распознавания');meterState.manifest=await r.json();}
  return meterState.manifest;
 }
 async function validMeterFile(buf,meta){
@@ -304,14 +329,14 @@ async function meterReadingStore(method,value){const db=await meterDB();return n
 async function saveMeterPhoto(){
  if(!meterState.source)return;
  const shot=meterApartments.snapshot,raw=await meterBlob(meterState.source);
- const record={apartment:shot.apartment,reading:'',autoReading:'',snapshotId:shot.id,created:new Date().toISOString(),rawBlob:raw,previewBlob:raw,rawWidth:meterState.source.width,rawHeight:meterState.source.height,needsReview:true};
+ const record={apartment:shot.apartment,reading:'',autoReading:'',snapshotId:shot.id,created:new Date().toISOString(),capturedAt:new Date().toISOString(),rawBlob:raw,previewBlob:raw,rawWidth:meterState.source.width,rawHeight:meterState.source.height,needsReview:true};
  await meterReadingStore('put',record);meterApartments.history=[record,...meterApartments.history.filter(r=>r.apartment!==shot.apartment)];
 }
 async function syncMeterReviewPhoto(record){
  if(!record.rawBlob||!record.snapshotId)return;
  const existing=await meterStore('get',record.snapshotId);
  if(!record.needsReview){if(existing?.autoSelected&&existing.labelStatus==='unlabeled'){await meterStore('delete',existing.id);await updateMeterCollection();}return;}
- const item=existing||{id:record.snapshotId,created:record.created,raw:record.rawBlob,blob:record.rawBlob,width:record.rawWidth,height:record.rawHeight,status:'ready',labelStatus:'unlabeled',windowStatus:'unlabeled',separatorStatus:'unlabeled',apartment:record.apartment,coordinateSpace:'source-frame'};
+ const item=existing||{id:record.snapshotId,created:record.capturedAt||record.created,raw:record.rawBlob,blob:record.rawBlob,width:record.rawWidth,height:record.rawHeight,status:'ready',labelStatus:'unlabeled',windowStatus:'unlabeled',separatorStatus:'unlabeled',apartment:record.apartment,coordinateSpace:'source-frame'};
  item.autoSelected=true;item.reading=record.reading;item.reviewReason=record.readingEdited?'manual':'unrecognized';
  if(!existing&&meterApartments.snapshot?.id===record.snapshotId&&meterState.result?.windowRect)applyMeterAnnotation(item,meterState.result);
  await meterStore('put',item);meterState.savedId=item.id;await updateMeterCollection();
@@ -506,3 +531,13 @@ meterApartments.ready.then(()=>{
  if(!['car','meter','settings'].includes(section))section='car';
  setAppSection(section);if(section==='meter')layoutMeterPreview();
 }).catch(()=>{});
+
+$('meter-retention-days').value=String(meterRetentionDays());
+$('meter-retention-days').addEventListener('change',async()=>{
+ const value=Number($('meter-retention-days').value);
+ if(!Number.isInteger(value)||value<1||value>3650){setStatus('meter-retention-status','Введите целое число дней от 1 до 3650.','bad');return;}
+ localStorage.setItem('meter-retention-days',String(value));setStatus('meter-retention-status','Срок хранения сохранён.','ok');
+ try{await meterApartments.ready;await purgeExpiredMeterData();}catch(e){setStatus('meter-retention-status',e.message,'bad');}
+});
+setInterval(()=>purgeExpiredMeterData().catch(()=>{}),60000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)meterApartments.ready.then(()=>purgeExpiredMeterData()).catch(()=>{});});

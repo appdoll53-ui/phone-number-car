@@ -1,4 +1,4 @@
-const APP_VERSION = "100";
+const APP_VERSION = "101";
 const MODEL_FILES = {"plate_det.onnx": {"bytes": 12238119, "sha256": "85d236280a1301ad98907947d284951dd2b20c23a6786ff50f7e6a8ec515bd50"}, "paddle_det.onnx": {"bytes": 4826518, "sha256": "a431985659dc921974177a95adcfbb90fd9e51989a5e04d70d0b75f597b6e61d"}, "paddle_rec.onnx": {"bytes": 7848423, "sha256": "b5f833dfc5d0eb71da397b4efa06ebeee9b431b690a47d6af40d77d8eabc557f"}};
 
 const ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_";
@@ -1285,7 +1285,7 @@ async function renderWaiting() {
     $("plate").value = formatPlate(btn.dataset.key);
     finishPlateEdit();
     $("result").classList.add("hidden");
-    setStatus("search-status", "Введите телефон для выбранного номера машины.");
+    setStatus("search-status", "");
     openContactEditor(btn.dataset.key);
   }));
   box.querySelectorAll(".delete-waiting").forEach(btn => btn.addEventListener("click", () => askDeleteWaiting(btn.dataset.key)));
@@ -1921,7 +1921,7 @@ async function renderSearchHistory() {
     const contacts=contactsFor(rows.find(row=>row.key===item.key));
     return `<article class="history-item${state.historyHighlight?.key === item.key && state.historyHighlight.until > Date.now() ? " history-highlight" : ""}" data-key="${escapeHtml(item.key)}">
       <button class="history-remove" data-action="remove-history" type="button" aria-label="Удалить номер из истории">×</button><div class="history-heading"><strong>${escapeHtml(formatPlate(item.key))}</strong><small>${new Date(item.time).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</small></div>
-      ${contacts.length ? contacts.map((contact,i)=>`<div class="history-contact" data-index="${i}" data-contact-id="${escapeHtml(contact.id || "")}" data-contact-phone="${escapeHtml(contact.phone)}"><small>${escapeHtml(contact.phone)}</small><div class="history-actions">
+      ${contacts.length ? contacts.map((contact,i)=>`<div class="history-contact" data-index="${i}" data-contact-id="${escapeHtml(contact.id || "")}" data-contact-phone="${escapeHtml(contact.phone)}"><small>${escapeHtml(contact.phone)}${contact.name ? " · "+escapeHtml(contact.name) : ""}</small><div class="history-actions">
         <button class="call" data-action="call" type="button" aria-label="Позвонить">☎</button>
         <button class="ghost" data-action="sms" type="button" aria-label="Отправить SMS">${actionIcon("sms")}</button><button class="ghost" data-action="telegram" type="button" aria-label="Написать в Telegram">${actionIcon("telegram")}</button>
         <button class="ghost" data-action="copy" type="button" aria-label="Скопировать номер телефона">${actionIcon("copy")}</button><button class="ghost history-add" data-action="add" type="button" aria-label="Добавить телефон">+ телефон</button>

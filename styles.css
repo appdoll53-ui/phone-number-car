@@ -629,3 +629,11 @@ input[type="text"],input[type="tel"],#message-text{background:#fff;color:var(--t
 #number-card>#crop-card{margin-top:auto;flex-shrink:0}
 #number-card>.status:empty{display:none}
 #number-card>#plate-widget,#number-card>#open-cam{flex-shrink:0}
+
+/* v101: a taller apartment selector and compact retention settings. */
+#meter-apartment-number{padding-top:calc(5px + 1.5mm)!important;padding-bottom:calc(5px + 1.5mm)!important;min-height:calc(30px + 3mm)}
+#meter-apartment-number .sub{font-size:16px}#meter-apartment-value{font-size:28px}
+.meter-retention{margin-top:20px;border-top:1px solid var(--line);padding-top:14px}
+#meter-retention-days{width:100%;max-width:120px;border:1px solid #9cafc3;border-radius:10px;padding:10px 12px;font:inherit;background:#fff;color:var(--text)}
+#settings>button{width:100%}
+#meter-apartment-number{height:calc(36.45px + 3mm);min-height:calc(36.45px + 3mm);padding:0 8px!important}
