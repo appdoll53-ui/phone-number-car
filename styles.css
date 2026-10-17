@@ -1,7 +1,7 @@
 :root {
-  --bg: #252b33;
-  --card: #343c46;
-  --line: #596572;
+  --bg: #353e49;
+  --card: #46515e;
+  --line: #718090;
   --text: #f3f5f7;
   --muted: #bac4ce;
   --accent: #3ddc97;
@@ -529,3 +529,89 @@ header .sub { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 header{flex-wrap:wrap}.header-actions.app-tabs{display:flex;width:100%;gap:8px;justify-content:flex-start}.nav-chip{width:auto;min-width:64px;border-radius:999px;padding:10px 22px;background:#303c49;color:#eef4fb;border:1px solid #526578;font-size:22px;line-height:1.2}.nav-chip.active{background:#4bd7bd;color:#102d27;border-color:#4bd7bd}#car-subnav{margin:0 0 12px}#open-history{font-size:15px;min-width:100px}#meter-photo{border-radius:20px;overflow:hidden}#meter-preview{border-radius:20px}#meter-photo-placeholder{display:none}#meter-photo.apartment-no-photo{opacity:1;border:1px solid #526578;box-sizing:border-box}#meter-photo.apartment-no-photo #meter-photo-placeholder{display:flex;position:absolute;inset:0;align-items:center;justify-content:center;color:#c8d0dc;font-size:20px}#meter-photo.apartment-no-photo #meter-preview{visibility:hidden}#meter-reading-field.apartment-no-reading{opacity:1}#settings>button{margin-bottom:10px}
 
 #plate-import-status,#meter-import-status{white-space:pre-line;overflow-wrap:anywhere;margin:0 0 14px}
+
+/* v86: detection status under the photo; overlays remain visible. */
+#meter-marker-confidence{position:static;display:block;margin:6px 0;background:transparent;color:var(--text);font-size:14px}
+#meter-photo{overflow:hidden}
+#meter-marker-confidence{width:min(88vw,720px);margin:6px auto;overflow-wrap:anywhere}
+
+/* v87: digit connections from photo boxes to the reading field. */
+#meter-digit-links{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:16;overflow:hidden}
+#meter-digit-links line{stroke:#6daaff;stroke-width:1.3;stroke-opacity:.6}
+#meter-marker-confidence{margin:6px auto;min-height:18px}
+
+/* v90 */
+#meter-photo{overflow:visible}
+#meter-marker-confidence{position:absolute;left:0;right:0;bottom:100%;margin:0 0 4px;width:100%;min-height:0;padding:0;background:transparent;font-size:14px;line-height:1.3}
+#meter-reading-field{margin-top:3px}
+#meter-photo-placeholder{border-radius:20px;overflow:hidden}
+#meter-digit-row>span[style*="hidden"]{pointer-events:none}
+.markup-view-controls{align-items:center}.markup-view-controls output{min-width:42px;text-align:center}
+#markup-pan[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+
+/* v97: shared blue palette and persistent section navigation. */
+:root{--bg:#19212a;--card:#25313d;--line:#526578;--text:#eef4fb;--muted:#b4c3d2;--accent:#9ed9ff;--accent-ink:#132b3c;--phone:#9ed9ff}
+.secondary,.nav-chip{background:#25313d;color:var(--text);border:1px solid var(--line)}
+input[type="text"],input[type="tel"],#message-text{background:#19212a;color:var(--text)}
+#app-header{position:sticky;top:0;z-index:19;background:var(--bg);padding:8px 0;margin-top:-8px;display:block}
+#app-header>div:first-child{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+#app-header h1{display:none}#app-header .sub{font-size:11px;margin:0}
+.header-actions.app-tabs{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) 48px;gap:6px;width:100%;}
+.header-actions.app-tabs .nav-chip{display:flex;align-items:center;justify-content:center;gap:7px;min-width:0;min-height:78px;padding:8px;border-radius:12px;font-size:13px;line-height:1.2;text-align:left}
+.header-actions.app-tabs .nav-chip.active{background:#354453;color:var(--text);border-color:var(--accent)}
+.nav-copy{display:block;min-width:0}.nav-copy strong{display:block;font-size:13px;font-weight:600}.nav-copy small{display:block;font-size:11px;color:var(--muted);margin-top:4px;line-height:1.25}.nav-icon{display:flex;flex:none}.nav-icon svg{width:22px;height:22px}#open-settings{font-size:25px}
+#meter-screen{padding-top:116px}#meter-label-screen{position:relative;z-index:1}
+#meter-apartment-controls>button,#meter-apartment-history>div,#meter-screen select{background:#25313d;color:var(--text);border-color:var(--line)}
+#meter-apartment-number,#meter-camera,#meter-apartment-number .sub{color:var(--accent-ink)!important}
+#meter-reading-field{margin-top:1.5px}
+#number-card{position:relative}#crop-card{width:100%;max-width:320px;min-height:78px;margin:0 auto 3px;position:relative;background:#25313d;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+#crop-preview{display:none;max-width:100%;object-fit:contain;margin:0;border-radius:12px;background:#25313d}#crop-card.has-photo #crop-preview{display:block}#car-photo-placeholder{display:flex;align-items:center;justify-content:center;min-height:78px;color:var(--muted)}#crop-card.has-photo #car-photo-placeholder{display:none}
+#open-cam{display:block;margin:10px auto 0;max-width:320px;font-size:17px}
+#crop-actions{display:none!important}.capture-summary{white-space:pre-line;overflow-wrap:anywhere;margin-top:18px!important}
+.plate-format-notice{border-color:var(--line)}.history-heading strong{color:var(--text)}.history-contact{border-color:var(--line)}.history-actions .call{background:var(--accent);color:var(--accent-ink)}.history-item.history-highlight{background:#354453;border-color:var(--accent)}
+#meter-digit-links{z-index:16}#settings>button{margin-bottom:10px}#message-card button{width:100%}
+@media(max-width:360px){.header-actions.app-tabs{grid-template-columns:minmax(0,1.65fr) minmax(0,1fr) 44px;gap:4px}.header-actions.app-tabs .nav-chip{padding:7px 5px;gap:5px}.nav-copy strong{font-size:12px}.nav-icon svg{width:19px;height:19px}}
+/* Preserve the existing camera-aligned photo coordinates, including short screens. */
+#meter-screen{padding-top:16px}
+#meter-screen>.row:first-child{visibility:hidden}
+
+/* v98: light surfaces, distinct grouped areas, and monochrome actions. */
+:root{color-scheme:light;--bg:#f2f5f9;--card:#ffffff;--line:#c4cfdd;--text:#182b40;--muted:#52657b;--accent:#17639b;--accent-ink:#ffffff;--phone:#17639b;--danger:#b42333;--warn:#885b00}
+.card{background:var(--card);border-color:var(--line);box-shadow:0 2px 8px #1832490a}
+.secondary{background:#e8eff7;color:#203e5c;border:1px solid #b9cadd}.ghost{background:#fff;color:var(--text);border-color:#bdcad8}
+.primary,.call,.found-call{background:var(--accent);color:#fff}.status.ok{color:#17613c}.status.bad{color:var(--danger)}
+input[type="text"],input[type="tel"],#message-text{background:#fff;color:var(--text);border-color:#9cafc3}
+#app-header{background:var(--bg)}.header-actions.app-tabs .nav-chip{background:#fff;color:#304b67;border-color:#b8c8d9;box-shadow:0 1px 3px #1832490a}.header-actions.app-tabs .nav-chip.active{background:#dcecfb;color:#134e80;border-color:#4f8dbf}.nav-copy small{color:#48627d}
+.action-icon{display:inline-block;width:22px;height:22px;vertical-align:middle;flex:none}#open-settings .action-icon{width:24px;height:24px}
+#meter-screen,#meter-label-screen{background:var(--bg)}#meter-photo,#crop-card,#meter-preview,#crop-preview{background:#e8edf3}#car-photo-placeholder,#meter-photo.apartment-no-photo #meter-photo-placeholder{color:#53677c}
+#meter-photo.apartment-no-photo{border-color:#aebfd1}#meter-marker-confidence{color:var(--text)}
+#meter-apartment-controls>button{background:#e8eff7;color:#25496b;border-color:#aebfd1}#meter-apartment-main{background:var(--accent)}#meter-apartment-number,#meter-camera,#meter-apartment-number .sub{color:#fff!important}
+#meter-apartment-history{gap:5px}#meter-apartment-history>.meter-history-item{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:9px 12px;text-align:left;border-radius:10px;border:1px solid #c7d3df;background:#fff;color:var(--text)}#meter-apartment-history>.meter-history-item.selected{background:#dcecfb;border-color:#4f8dbf;box-shadow:inset 3px 0 #17639b}#meter-apartment-history .meter-history-reading{font-size:22px;font-weight:700}
+#meter-screen select{background:#fff;color:var(--text);border-color:var(--line)}.meter-option{color:var(--text)}.meter-option input{accent-color:var(--accent)}
+#meter-annotations{margin-top:20px}.meter-data-actions{margin-bottom:0}
+#contact-dialog{border:1px solid var(--line);border-radius:22px;background:#fff;color:var(--text);padding:24px;width:min(96vw,480px)}#contact-dialog::backdrop{background:#15294170}#contact-dialog #add-card{background:#fff}#contact-dialog .editor-bottom-row{gap:10px}#contact-dialog .editor-actions{gap:8px}
+.meter-dialog,#delete-dialog{background:#fff;color:var(--text);border-color:var(--line)}.meter-dialog input{background:#fff;color:var(--text)}
+.history-item{background:#fff;border-color:#c4cfdd}.history-item.history-highlight{background:#dcecfb;border-color:#4f8dbf}.history-heading strong{color:var(--text)}.history-heading small{opacity:1;color:var(--muted)}.history-contact{border-color:#d5dfe9}.history-actions{gap:5px;flex-wrap:nowrap}.history-actions button{min-height:40px;min-width:32px;padding:7px 6px}.history-actions .history-add{font-size:11px;white-space:nowrap;min-width:0}.history-actions .action-icon{width:18px;height:18px}.history-actions .call{background:var(--accent);color:#fff}
+.contact-actions{gap:5px}.contact-actions .message-button{flex:0 0 40px;width:40px;min-width:0;height:44px}.contact-actions .add-contact-chip{flex:1;padding:8px 4px;font-size:12px;white-space:nowrap}.contact-actions .edit-contact{flex:0 0 40px;padding:8px}.found-phone-row .phone{color:#155b91}.match{padding-right:30px}
+.cam-controls{top:auto!important;bottom:64px;gap:12px}.cam-controls #torch.hidden{display:block!important;visibility:hidden;pointer-events:none}.cam.camera-opening .cam-controls{visibility:hidden}.cam-controls .secondary,.cam-controls .ghost{background:#1a2634cc;color:#fff;border-color:#d9e7f4}.cam-controls #torch[aria-pressed="true"]{background:#ffe58a;color:#172535}.cam-controls .shot{background:#fff;color:#172535}.cam.meter-camera .cam-controls{bottom:64px}
+.plate-frame:not(.square-frame){border-color:#3ddc97}.plate-frame.inactive{border-color:transparent}.cam .square-frame{border-color:#3ddc97}.cam .square-frame.inactive{border-color:transparent}
+#view{background:#e8edf3}.plate-format-notice{background:#f3f7fc;border-color:#bed0e2}.phone{color:#155b91}
+@media(max-width:360px){.history-actions{gap:3px}.history-actions button{min-width:29px;padding:6px 4px}.history-actions .history-add{font-size:10px}.contact-actions .message-button{flex-basis:34px;width:34px}.contact-actions .edit-contact{flex-basis:34px}}
+.history-actions{gap:4px}.history-actions button{min-width:30px;padding:7px 4px}.history-actions .history-add{font-size:11px}
+@media(max-width:360px){.history-actions{gap:3px}.history-actions button{min-width:26px;padding:7px 4px}.history-actions .action-icon{width:17px;height:17px}.history-actions .history-add{font-size:10px;padding:7px 3px}}
+
+/* v99: consistent headings, compact plate samples and grouped meter controls. */
+#waiting-card>h2,#plate-format-card>h2,#message-card>h2,#connection-card>h2{font-size:18px;font-weight:700;line-height:normal;margin:0 0 16px}
+.plate-example{display:inline-block;vertical-align:middle;box-sizing:border-box;border:1px solid #111;border-radius:3px;background:#fff;color:#111;padding:0 3px;font-size:15px;font-weight:700;line-height:18px;white-space:nowrap}
+.plate-example-square{text-align:center;line-height:17px}
+#meter-screen{border:0;box-shadow:none}
+#meter-reading-block{padding:14px 0;background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:0 2px 8px #1832490a}
+#meter-reading-block>#meter-apartment-controls,#meter-reading-block>#meter-apartment-summary,#meter-reading-block>#meter-apartment-history{margin-left:14px;margin-right:14px}
+#meter-options-block{padding:14px;background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:0 2px 8px #1832490a}
+#meter-photo{background:transparent;border:0;border-radius:0;box-shadow:none;overflow:visible}
+#meter-photo.apartment-no-photo{border:1px solid var(--line);border-radius:12px;background:#e8edf3}
+#meter-photo-placeholder{border-radius:12px}
+#meter-preview{border:1px solid var(--line);border-radius:12px;background:transparent}
+#meter-reading-field{border:2px solid #111;border-radius:8px;margin-top:3px;margin-bottom:10px}
+#meter-reading-field #meter-reading{border-radius:6px}
+#meter-clear-readings{background:#e8eff7;color:#203e5c;border:1px solid #b9cadd}

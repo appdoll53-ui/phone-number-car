@@ -1,4 +1,4 @@
-const APP_VERSION = "83";
+const APP_VERSION = "99";
 const MODEL_FILES = {"plate_det.onnx": {"bytes": 12238119, "sha256": "85d236280a1301ad98907947d284951dd2b20c23a6786ff50f7e6a8ec515bd50"}, "paddle_det.onnx": {"bytes": 4826518, "sha256": "a431985659dc921974177a95adcfbb90fd9e51989a5e04d70d0b75f597b6e61d"}, "paddle_rec.onnx": {"bytes": 7848423, "sha256": "b5f833dfc5d0eb71da397b4efa06ebeee9b431b690a47d6af40d77d8eabc557f"}};
 
 const ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_";
@@ -21,6 +21,7 @@ function hideWait() {
 }
 
 function setStatus(id, text, kind) {
+  if(state.silentUpdating&&["update-status","offline-status"].includes(id))return;
   const el = $(id);
   el.textContent = text || "";
   el.className = "status" + (kind ? " " + kind : "");
@@ -224,11 +225,16 @@ function makeOperation(edit, previous, queued, contact, type = "upsert") {
     createdAt: queued?.createdAt || new Date().toISOString() };
 }
 
+function actionIcon(name){
+ const paths={sms:'<path d="M4 3h16v13H8l-4 4V3Z"/><path d="M7 7h10M7 11h7"/>',telegram:'<path d="m3 10 18-7-5 18-5-7-8-4Z"/><path d="m11 14 10-11"/>',copy:'<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M15 8V3H3v12h5"/>',edit:'<path d="m4 16 12-12 4 4L8 20H4v-4Z"/><path d="m13 7 4 4"/>'};
+ return '<svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">'+(paths[name]||'')+'</svg>';
+}
 function settings() {
   return {
     scriptUrl: localStorage.getItem("scriptUrl") || "",
     secret: localStorage.getItem("scriptSecret") || "",
     messageText: localStorage.getItem("messageText") || "",
+    sharpFrames: true,
     perspective: false
   };
 }
@@ -313,10 +319,7 @@ async function prepareOrt() {
   ort.env.wasm.numThreads = 1;
 }
 
-function modelProgress(name, text) {
-  const ids = { "plate_det.onnx": "model-det-status", "paddle_det.onnx": "model-paddle-det-status", "paddle_rec.onnx": "model-paddle-rec-status" };
-  $(ids[name]).textContent = text;
-}
+function modelProgress(name,text) {}
 
 async function activateModels(detBuf, paddleDetBuf, paddleRecBuf) {
   await prepareOrt();
@@ -341,7 +344,7 @@ async function activateModels(detBuf, paddleDetBuf, paddleRecBuf) {
   state.ocr = { paddleDet: created[1], paddleRec: created[2] };
   await Promise.allSettled(old.map(session => session.release()));
   $("open-cam").disabled = false;
-  $("retry-models-settings").classList.add("hidden");
+  
   setStatus("model-status", "Все модели готовы. Распознавание работает без интернета.", "ok");
 }
 
@@ -370,8 +373,11 @@ async function loadAllModels() {
         try { await validateDownloadedModel(saved.buf, name); buf = saved.buf; }
         catch (_) { await dbDelete("models", name); }
       }
+      if(buf&&saved?.version!==APP_VERSION){
+        try{const updated=await fetchModel('models/'+name,'распознавания',true);const check=await ort.InferenceSession.create(updated,{executionProviders:["wasm"]});await check.release();await dbPut('models',{name,buf:updated,version:APP_VERSION});buf=updated;}catch(error){state.modelUpdateNote=error.message;}
+      }
       if (!buf) {
-        throw new Error('Загрузите '+name+' из папки телефона в настройках.');
+        buf=await fetchModel('models/'+name,'распознавания');await dbPut('models',{name,buf,version:APP_VERSION});
       }
       modelProgress(name, "Сохранена на телефоне");
       buffers.push(buf);
@@ -396,7 +402,7 @@ async function startModels() {
     await ensureModels();
   } catch (err) {
     setStatus("model-status", "Модели не готовы: " + err.message, "bad");
-    $("retry-models-settings").classList.remove("hidden");
+    
     showWait("Не удалось подготовить распознавание. " + err.message);
     $("wait-spinner").classList.add("hidden");
     $("wait-actions").classList.remove("hidden");
@@ -407,8 +413,9 @@ function setAppSection(section) {
   if(state.stream) closeCamera();
   if(section!=='meter' && typeof meterState!=='undefined'){state.cameraMode='plate';meterState.collecting=false;$('cam').classList.remove('meter-camera');}
   for(const [id,name] of [['main-screen','car'],['settings','settings'],['meter-screen','meter']]) $(id).classList.toggle('hidden',section!==name);
-  $('search-history').classList.add('hidden');$('meter-label-screen').classList.add('hidden');
-  $('car-subnav').classList.toggle('hidden',section!=='car');
+  $('search-history').classList.remove('hidden');$('meter-label-screen').classList.add('hidden');
+  $('car-subnav').classList.add('hidden');
+  if(section==='car')renderSearchHistory().catch(()=>{});
   $('open-history').textContent='История';$('open-history').setAttribute('aria-expanded','false');$('open-history').classList.remove('active');
   for(const [id,name] of [['open-car','car'],['open-meter','meter'],['open-settings','settings']]) {$(id).classList.toggle('active',section===name);$(id).setAttribute('aria-pressed',String(section===name));}
   window.scrollTo(0,0);
@@ -491,7 +498,7 @@ async function detectPlate(source) {
   const padX = (best.x2 - best.x1) * 0.06;
   const padY = (best.y2 - best.y1) * 0.08;
   const crop = cropImage(source, best.x1 - padX, best.y1 - padY, best.x2 + padX, best.y2 + padY);
-  return { crop, conf: best.conf, found: true };
+  return { crop, conf: best.conf, found: true, bounds:{left:best.x1-padX,top:best.y1-padY,right:best.x2+padX,bottom:best.y2+padY} };
 }
 
 function cropImage(source, x1, y1, x2, y2) {
@@ -539,24 +546,38 @@ function extractRuPlate(text) {
   return PLATE_RE.test(clean) ? clean : "";
 }
 
-async function recognize(canvas, skipDet) {
+async function recognize(canvas, skipDet, preparedDet=null) {
   await ensureModels();
-  if (skipDet) {
-    const ocr = await readPlate(canvas);
-    return { plate: ocr.text, rawText: ocr.rawText, conf: ocr.conf, foundBox: false, crop: canvas };
+  const attempts=[];
+  async function read(source, method, foundBox=false) {
+    const ocr=await readPlate(source);
+    const result={plate:ocr.text,rawText:ocr.rawText,conf:ocr.conf,foundBox,crop:canvas,detectedCrop:source,plateType:state.photoPlateType||state.plateType||"long",method};
+    attempts.push(result);return result;
   }
-  const det = await detectPlate(canvas);
-  const square = (state.photoPlateType || state.plateType) === "square";
-  const ratio = det.crop.width / det.crop.height;
-  const target = det.found && (!square || (ratio >= 1.15 && ratio <= 2.5)) ? det.crop : canvas;
-  const ocr = await readPlate(target);
-  return { plate: ocr.text, rawText: ocr.rawText, conf: ocr.conf, foundBox: target !== canvas, crop: canvas, detectedCrop: target, plateType: state.plateType || "long" };
+  if(skipDet)return read(canvas,"экранная рамка");
+  const det=preparedDet||await detectPlate(canvas),square=(state.photoPlateType||state.plateType)==="square",ratio=det.crop.width/det.crop.height;
+  const target=det.found&&(!square||(ratio>=1.15&&ratio<=2.5))?det.crop:canvas;
+  let result=await read(target,target===canvas?"экранная рамка":"табличка",target!==canvas);
+  if(target!==canvas){
+    const full=await read(canvas,"экранная рамка");
+    if(result.plate&&full.plate&&result.plate!==full.plate){
+      const chosen=result.conf>=full.conf?result:full;
+      return {...chosen,disagreement:true,alternatives:[result.plate,full.plate]};
+    }
+    if(result.plate)return result;
+    if(full.plate)return full;
+  }else if(result.plate)return result;
+  // Try perspective correction only after the untouched crops failed.
+  const corrected=rectifyPlate(target);
+  if(corrected!==target){result=await read(corrected,"выравнивание перспективы",target!==canvas);if(result.plate)return result;}
+  return attempts[0];
 }
 
 async function openCamera() {
   setStatus("search-status", "");
   hideMissingOffer();
   $("zoom-control").style.visibility = "hidden";
+  $("cam").classList.add("camera-opening");
   $("cam").classList.remove("hidden");
   layoutZoomSlider();
   try {
@@ -596,8 +617,9 @@ async function openCamera() {
     $("torch").setAttribute("aria-pressed", "false");
     state.focusQueue = Promise.resolve();
     state.photoCapture = null;
+    state.photoCaptureError = null;
     if (typeof ImageCapture !== "undefined") {
-      try { state.photoCapture = new ImageCapture(track); } catch (_) {}
+      try { state.photoCapture = new ImageCapture(track); } catch (error) { state.photoCaptureError = error.name+": "+error.message; }
     }
     if (caps.focusMode && caps.focusMode.includes("continuous")) {
       try { await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch (_) {}
@@ -607,6 +629,7 @@ async function openCamera() {
     if(state.cameraMode === "meter" && caps.torch && localStorage.getItem('meter-camera-torch') === 'true') await toggleTorch();
     layoutZoomSlider();
     $("zoom-control").style.visibility = "visible";
+    $("cam").classList.remove("camera-opening");
   } catch (err) {
     closeCamera();
     setStatus(state.cameraMode === "meter" ? "meter-status" : "model-status", "Камера не открылась: " + err.message, "bad");
@@ -726,17 +749,23 @@ function layoutZoomSlider() {
   const frame = $("plate-frame").getBoundingClientRect();
   const cam = $("cam").getBoundingClientRect();
   if (!frame.width || !cam.height) return;
-  const square = $("square-frame");
-  const width = Math.min(frame.width * 0.56, cam.height * 0.42);
-  square.style.width = width + "px";
-  square.style.height = width / (290 / 170) + "px";
-  square.style.top = (frame.bottom - cam.top - width / (290 / 170)) + "px";
-  const controls = document.querySelector(".cam-controls");
-  controls.style.top = "66%";
-  const side = $("zoom-control");
-  side.style.top = (frame.bottom - cam.top) + "px";
-  side.style.height = Math.max(26, Math.max(52, cam.height - 64 - (frame.bottom - cam.top)) * (state.cameraMode === "meter" ? 0.5 : 1)) + "px";
-  side.style.left = (cam.width - 112) + "px";
+  const square = $("square-frame"),isMeter=state.cameraMode==='meter';
+  const oldWidth=frame.width,oldHeight=oldWidth/4.1;
+  const squareWidth=Math.min(oldWidth*.56,cam.height*.42),squareHeight=squareWidth/(290/170);
+  const factor=squareHeight/oldHeight;
+  if(!isMeter){$('plate-frame').style.height=squareHeight+'px';$('plate-frame').style.aspectRatio='auto';}
+  else{$('plate-frame').style.height='';$('plate-frame').style.aspectRatio='';}
+  const current=$('plate-frame').getBoundingClientRect();
+  square.style.width=(squareWidth*factor)+'px';square.style.height=(squareHeight*factor)+'px';
+  square.style.top=(current.bottom-cam.top-squareHeight*factor)+'px';
+  const controls=document.querySelector('.cam-controls');controls.style.top='';
+  const side=$('zoom-control');
+  // Same slider position/length in both modes, independent of the meter frame height.
+  const carWidth=Math.min(cam.width*.88,536),carBaseHeight=carWidth/4.1;
+  const carSquareHeight=Math.min(carWidth*.56,cam.height*.42)/(290/170);
+  const sliderTop=cam.height*.5+carSquareHeight/2;
+  side.style.top=sliderTop+'px';side.style.height=Math.max(52,cam.height-64-sliderTop)+'px';
+  side.style.left=(cam.width-112)+'px';
   paintCameraShade();
 }
 
@@ -831,58 +860,73 @@ function frameRegion() {
 }
 
 function framedCrop(source, region, videoWidth, videoHeight) {
-  const sx = source.width / videoWidth;
-  const sy = source.height / videoHeight;
-  const padX = (region.x2 - region.x1) * 0.04;
-  const padY = (region.y2 - region.y1) * 0.08;
-  return cropImage(source, (region.x1 - padX) * sx, (region.y1 - padY) * sy,
-    (region.x2 + padX) * sx, (region.y2 + padY) * sy);
+  const view=source.captureViewport||{left:0,top:0,width:source.width,height:source.height};
+  const sx=view.width/videoWidth,sy=view.height/videoHeight,padX=(region.x2-region.x1)*.04,padY=(region.y2-region.y1)*.08;
+  const result=cropImage(source,view.left+(region.x1-padX)*sx,view.top+(region.y1-padY)*sy,view.left+(region.x2+padX)*sx,view.top+(region.y2+padY)*sy);
+  // The full capture is temporary: keep only the screen-frame crop.
+  source.width=source.height=1;
+  return result;
+}
+function photoViewport(photo,video){
+  const ratio=video.width/video.height;
+  const width=Math.min(photo.width,photo.height*ratio),height=width/ratio;
+  return {left:(photo.width-width)/2,top:(photo.height-height)/2,width,height};
+}
+function matchPhotoViewport(photo,video){
+  // Match the live view against the photo at low resolution; different aspect ratios
+  // alone do not tell us which sensor crop the browser used.
+  function gray(source,w,h){const c=document.createElement('canvas');c.width=w;c.height=h;const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(source,0,0,w,h);const rgba=ctx.getImageData(0,0,w,h).data,g=new Float32Array(w*h);for(let i=0;i<g.length;i++)g[i]=rgba[i*4]*.299+rgba[i*4+1]*.587+rgba[i*4+2]*.114;return g;}
+  const size=32,small=160,v=gray(video,size,size),p=gray(photo,small,small),initial=photoViewport(photo,video);
+  let best=null;
+  for(const factor of [.5,.6,.7,.8,.9,1])for(const dx of [-.08,0,.08])for(const dy of [-.08,0,.08]){
+    const width=initial.width*factor,height=initial.height*factor,left=Math.max(0,Math.min(photo.width-width,(photo.width-width)/2+dx*photo.width)),top=Math.max(0,Math.min(photo.height-height,(photo.height-height)/2+dy*photo.height));
+    let av=0,ap=0,vv=0,pp=0,vp=0;
+    for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+      const a=v[y*size+x],px=Math.min(small-1,Math.max(0,Math.floor((left+(x+.5)/size*width)/photo.width*small))),py=Math.min(small-1,Math.max(0,Math.floor((top+(y+.5)/size*height)/photo.height*small))),b=p[py*small+px];av+=a;ap+=b;vv+=a*a;pp+=b*b;vp+=a*b;
+    }
+    const n=size*size,varianceV=vv-av*av/n,varianceP=pp-ap*ap/n,score=varianceV>n*20&&varianceP>n*20?(vp-av*ap/n)/Math.sqrt(varianceV*varianceP):0;
+    if(!best||score>best.score)best={left,top,width,height,score};
+  }
+  return best;
 }
 
 async function capturePhoto(video) {
-  // Keep a fallback from the same preview before taking a photo.
-  const fallback = grabFrame(video);
-  const capture = state.photoCapture;
-  if (!capture) return fallback;
-  let bitmap;
+  const fallback=grabFrame(video);state.captureKind="кадр видео";
+  const track=state.stream?.getVideoTracks()[0];
+  state.captureDebug={requestedVideo:[1920,1080],video:[video.videoWidth,video.videoHeight],track:track?.getSettings?.()||{},imageCaptureAvailable:typeof ImageCapture!=="undefined",imageCaptureCreated:Boolean(state.photoCapture),stage:"начало",reason:""};
+  const debug=state.captureDebug,capture=state.photoCapture;
+  if(!capture){debug.reason=state.photoCaptureError?"Создание ImageCapture: "+state.photoCaptureError:"ImageCapture недоступен";return fallback;}
+  let bitmap,photo,timer;
   try {
-    const caps = await capture.getPhotoCapabilities();
-    const ratio = video.videoWidth / video.videoHeight;
-    const width = Math.floor(Math.min(caps.imageWidth.max, caps.imageHeight.max * ratio));
-    const height = Math.round(width / ratio);
-    const settings = width >= caps.imageWidth.min && height >= caps.imageHeight.min
-      ? { imageWidth: width, imageHeight: height } : {};
-    bitmap = await createImageBitmap(await capture.takePhoto(settings));
-    // Different aspect ratios may have different fields of view: keep the exact preview crop.
-    if (Math.abs(bitmap.width / bitmap.height / ratio - 1) > 0.02 ||
-        bitmap.width < fallback.width || bitmap.height < fallback.height) return fallback;
-    const canvas = document.createElement("canvas");
-    canvas.width = bitmap.width;
-    canvas.height = bitmap.height;
-    canvas.getContext("2d").drawImage(bitmap, 0, 0);
-    return canvas;
-  } catch (_) {
-    return fallback;
-  } finally {
-    if (bitmap) bitmap.close();
-  }
+    debug.stage="getPhotoCapabilities";
+    try{const caps=await capture.getPhotoCapabilities();debug.photoCapabilities={imageWidth:caps.imageWidth,imageHeight:caps.imageHeight};}catch(error){debug.capabilitiesError=error.name+": "+error.message;}
+    // Let the camera choose its native still-photo dimensions.
+    debug.requestedPhoto={};debug.stage="takePhoto";
+    const blob=await Promise.race([capture.takePhoto(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error("Камера не вернула фото за 12 секунд")),12000);})]);clearTimeout(timer);debug.photoBytes=blob.size;
+    debug.stage="createImageBitmap";bitmap=await createImageBitmap(blob);debug.photo=[bitmap.width,bitmap.height];
+    debug.aspectDifferencePercent=Number((Math.abs(bitmap.width/bitmap.height/(video.videoWidth/video.videoHeight)-1)*100).toFixed(2));
+    photo=document.createElement("canvas");photo.width=bitmap.width;photo.height=bitmap.height;photo.getContext("2d").drawImage(bitmap,0,0);
+    debug.stage="сопоставление фото и видео";
+    const view=matchPhotoViewport(photo,fallback);debug.viewport=view;
+    if(!view||view.score<.6){debug.reason="Не удалось уверенно сопоставить фото с экранной рамкой; использован видеокадр";return fallback;}
+    if(view.width<fallback.width||view.height<fallback.height){debug.reason="Область фото содержит меньше пикселей, чем видеокадр";return fallback;}
+    photo.captureViewport=view;state.captureKind="фотография";debug.stage="готово";debug.reason="Использована полноценная фотография; экранная рамка сопоставлена по изображению";
+    fallback.width=fallback.height=1;const result=photo;photo=null;return result;
+  }catch(error){debug.reason="Ошибка на этапе "+debug.stage+": "+(error.name||"Error")+" — "+error.message;return fallback;}
+  finally{clearTimeout(timer);if(bitmap)bitmap.close();if(photo)photo.width=photo.height=1;}
 }
 
-function rotateCanvas(source, quarterTurns) {
-  const canvas = document.createElement("canvas");
-  const swap = quarterTurns % 2 === 1;
-  canvas.width = swap ? source.height : source.width;
-  canvas.height = swap ? source.width : source.height;
-  const ctx = canvas.getContext("2d");
-  ctx.translate(canvas.width / 2, canvas.height / 2);
-  ctx.rotate(quarterTurns * Math.PI / 2);
-  ctx.drawImage(source, -source.width / 2, -source.height / 2);
-  return canvas;
-}
-
-function plateScore(result) {
-  if (!result || !result.plate) return 0;
-  return (PLATE_RE.test(result.plate) ? 2 : 0) + result.conf;
+function captureSummary(width,height){return 'Кадр видео: '+width+' × '+height+(state.sharpTiming?'\n'+state.sharpTiming:'');}
+function captureDebugText(){
+ const d=state.captureDebug;if(!d)return "";
+ const lines=["Съёмка: "+d.reason,"Видео: "+d.video.join(" × ")+"; запрошено: "+d.requestedVideo.join(" × "),"Параметры камеры: "+JSON.stringify(d.track),"ImageCapture: доступен="+d.imageCaptureAvailable+", создан="+d.imageCaptureCreated];
+ if(d.capabilitiesError)lines.push("Параметры фото недоступны: "+d.capabilitiesError);
+ if(d.viewport)lines.push("Сопоставление с видео: "+JSON.stringify(d.viewport));
+ if(d.photoCapabilities)lines.push("Возможности фото: "+JSON.stringify(d.photoCapabilities));
+ if(d.requestedPhoto)lines.push("Запрос фото: "+JSON.stringify(d.requestedPhoto));
+ if(d.photo)lines.push("Получено фото: "+d.photo.join(" × ")+"; отличие пропорций: "+d.aspectDifferencePercent+"%");
+ if(state.sharpTiming)lines.push(state.sharpTiming);
+ return lines.join("\n");
 }
 
 function grabFrame(video) {
@@ -893,13 +937,40 @@ function grabFrame(video) {
   return canvas;
 }
 
+function sharpnessScore(source,bounds){
+ const c=bounds?cropImage(source,bounds.left,bounds.top,bounds.right,bounds.bottom):source;
+ const small=document.createElement('canvas'),scale=Math.min(1,320/c.width,160/c.height);small.width=Math.max(3,Math.round(c.width*scale));small.height=Math.max(3,Math.round(c.height*scale));
+ const ctx=small.getContext('2d',{willReadFrequently:true});ctx.drawImage(c,0,0,small.width,small.height);const d=ctx.getImageData(0,0,small.width,small.height).data,w=small.width,h=small.height;
+ const gray=i=>.299*d[i*4]+.587*d[i*4+1]+.114*d[i*4+2];let sum=0,sq=0,n=0;
+ for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const i=y*w+x,v=4*gray(i)-gray(i-1)-gray(i+1)-gray(i-w)-gray(i+w);sum+=v;sq+=v*v;n++;}
+ if(bounds)c.width=c.height=1;return n?sq/n-(sum/n)**2:0;
+}
+async function nextVideoFrame(video){
+ if(video.requestVideoFrameCallback)await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{video.cancelVideoFrameCallback(id);reject(new Error('Не поступил новый видеокадр'));},1500);const id=video.requestVideoFrameCallback(()=>{clearTimeout(timer);resolve();});});
+ else await new Promise(resolve=>setTimeout(resolve,70));
+}
+async function captureSharpFrames(video,region,locate){
+ const started=performance.now(),enabled=true,frames=[];let detection,selected=0;
+ state.captureKind='кадр видео';state.captureDebug={reason:'Съёмка из видеопотока',video:[video.videoWidth,video.videoHeight],requestedVideo:[1920,1080],track:state.stream?.getVideoTracks()[0]?.getSettings?.()||{}};
+ try{
+ for(let i=0;i<(enabled?5:1);i++){await nextVideoFrame(video);frames.push(framedCrop(grabFrame(video),region,video.videoWidth,video.videoHeight));}
+ const collected=performance.now();
+ if(enabled)detection=await locate(frames[0]);const located=performance.now();
+ const bounds=detection?.bounds;
+ if(enabled&&bounds){const scores=frames.map(c=>sharpnessScore(c,bounds));selected=scores.indexOf(Math.max(...scores));}
+ const frame=frames[selected];if(detection?.crop&&detection.crop!==frames[0])detection.crop.width=detection.crop.height=1;if(detection?.crop&&detection.found&&bounds)detection={...detection,crop:cropImage(frame,bounds.left,bounds.top,bounds.right,bounds.bottom)};
+ state.sharpTiming=enabled?'Выбор резкого кадра: '+(selected+1)+'/5 · сбор: '+Math.round(collected-started)+' мс · поиск области: '+Math.round(located-collected)+' мс · выбор: '+Math.round(performance.now()-located)+' мс · всего: '+Math.round(performance.now()-started)+' мс'+(!bounds?' · область не найдена, использован первый кадр':''):'Выбор резкого кадра выключен · съёмка: '+Math.round(performance.now()-started)+' мс';
+ frames.forEach((c,i)=>{if(i!==selected)c.width=c.height=1;});return {frame,detection};
+ }catch(e){frames.forEach(c=>c.width=c.height=1);throw e;}
+}
+
 async function shoot() {
   const video = $("video");
   if (!video.videoWidth) return;
   if (state.shooting) return;
   state.shooting = true;
   $("shot").disabled = true;
-  let framed;
+  let framed, preparedDet;
   try {
     showWait("Снимаем фото…");
     await state.zoomMotion;
@@ -911,8 +982,8 @@ async function shoot() {
     const region = frameRegion();
     const videoWidth = video.videoWidth;
     const videoHeight = video.videoHeight;
-    const photo = await capturePhoto(video);
-    framed = framedCrop(photo, region, videoWidth, videoHeight);
+    const burst=await captureSharpFrames(video,region,async c=>{await ensureModels();return detectPlate(c);});
+    framed=burst.frame;preparedDet=burst.detection;
     closeCamera();
   } catch (err) {
     setStatus("model-status", "Ошибка съёмки: " + err.message, "bad");
@@ -922,26 +993,10 @@ async function shoot() {
     $("shot").disabled = false;
     hideWait();
   }
-  const turns = [0, 1, 3, 2];
-  const labels = { 0: "как снято", 1: "поворот вправо", 3: "поворот влево", 2: "вверх ногами" };
-  let best = null;
-  let bestTurn = 0;
+  let best=null;
   try {
-    for (const source of [framed]) {
-      for (const turn of turns) {
-        const label = "Рамка, " + labels[turn] + "…";
-        showWait(label);
-        setStatus("model-status", label);
-        const frame = turn ? rotateCanvas(source, turn) : source;
-        const result = await recognize(frame, false);
-        if (!best || plateScore(result) > plateScore(best)) {
-          best = result;
-          bestTurn = turn;
-        }
-        if (result.plate && PLATE_RE.test(result.plate)) break;
-      }
-      if (best && PLATE_RE.test(best.plate)) break;
-    }
+    showWait("Читаем номер…");
+    best=await recognize(framed,false,preparedDet);
     showCrop(best ? { ...best, crop: framed } : {crop:framed, detectedCrop:framed, plateType:state.photoPlateType});
     $("result").classList.add("hidden");
     $("add-card").classList.add("hidden");
@@ -954,9 +1009,10 @@ async function shoot() {
     $("plate").value = formatPlate(best.plate);
     paintPlate();
     const formatOk = PLATE_RE.test(best.plate);
+    if(best.disagreement){setStatus("model-status","Чтение таблички и всей рамки расходится: "+best.alternatives.map(formatPlate).join(" / ")+". Проверьте номер на фото.","bad");return;}
     setStatus("model-status", formatOk
-      ? "Номер в рамке прочитан (" + labels[bestTurn] + "). Проверьте символы номера."
-      : "Прочитано неуверенно (" + labels[bestTurn] + "). Проверьте номер.",
+      ? "Номер в рамке прочитан (" + best.method + "). Проверьте символы номера."
+      : "Прочитано неуверенно (" + best.method + "). Проверьте номер.",
       formatOk ? "ok" : "");
     await search();
   } catch (err) {
@@ -969,15 +1025,17 @@ async function shoot() {
 function showCrop(result) {
   hideMissingOffer();
   const available=Boolean(result && result.crop);
-  $("crop-card").classList.toggle("hidden", !available);
-  $("crop-actions").classList.toggle("hidden", !available);
+  $("crop-card").classList.remove("hidden");
+  $("crop-card").classList.toggle("has-photo",available);
+  $("crop-actions").classList.add("hidden");
   if(!available) return;
   state.hasPhoto=true;
   state.photoPlateType=result.plateType || state.photoPlateType || "long";
   const preview=result.detectedCrop || result.crop;
   state.lastCrop=preview;
   $("crop-preview").src=preview.toDataURL("image/jpeg",.9);
-  $("ocr-raw-text").textContent=result.rawText || "Текст не обнаружен";
+  $("ocr-raw-text").textContent=result.rawText||"";
+  $("car-capture-summary").textContent=captureSummary(result.crop.width,result.crop.height);
   paintPlate();
 }
 
@@ -1035,8 +1093,8 @@ async function search(record = true) {
       const tel = phoneHref(hit.phone);
       return `<div class="match"><button class="delete-contact" type="button" data-index="${i}" aria-label="Удалить контакт">×</button>
         <div class="person">${escapeHtml(hit.name || "Без имени")}</div>
-        <div class="found-phone-row"><div class="phone">${escapeHtml(hit.phone)}</div><button class="ghost add-contact-chip" type="button">+ телефон</button><button class="ghost edit-contact" type="button" data-index="${i}" aria-label="Редактировать контакт">✎</button></div>
-        ${tel ? `<button class="call found-call" type="button" data-tel="${escapeHtml(tel)}">Позвонить</button><div class="contact-actions"><button class="ghost message-button write-sms" type="button" data-tel="${escapeHtml(tel)}"><span>смс</span></button><button class="ghost message-button write-telegram" type="button" data-tel="${escapeHtml(tel)}"><span>телеграмм</span></button><button class="ghost message-button copy-phone" type="button" data-phone="${escapeHtml(hit.phone)}"><span>скопировать</span></button></div>` : ""}</div>`;
+        <div class="found-phone-row"><div class="phone">${escapeHtml(hit.phone)}</div></div>
+        ${tel ? `<button class="call found-call" type="button" data-tel="${escapeHtml(tel)}">Позвонить</button><div class="contact-actions"><button aria-label="Отправить SMS" class="ghost message-button write-sms" type="button" data-tel="${escapeHtml(tel)}">${actionIcon("sms")}</button><button aria-label="Написать в Telegram" class="ghost message-button write-telegram" type="button" data-tel="${escapeHtml(tel)}">${actionIcon("telegram")}</button><button aria-label="Скопировать телефон" class="ghost message-button copy-phone" type="button" data-phone="${escapeHtml(hit.phone)}">${actionIcon("copy")}</button><button class="ghost add-contact-chip" type="button">+ телефон</button><button class="ghost edit-contact" type="button" data-index="${i}" aria-label="Редактировать контакт">${actionIcon("edit")}</button></div>` : ""}</div>`;
     }).join("");
     result.querySelectorAll(".call").forEach(btn => btn.addEventListener("click", () => { window.location.href = "tel:" + btn.dataset.tel; }));
     result.querySelectorAll(".write-sms").forEach(btn => btn.addEventListener("click", () => { window.location.href = messageLink("sms", btn.dataset.tel, settings().messageText); }));
@@ -1515,7 +1573,10 @@ function waitForWorker(worker, target) {
   });
 }
 
-async function refreshApp() {
+async function refreshApp(options={}) {
+  const silent=options.silent===true;
+  if(state.silentUpdating)return;
+  if(silent)state.silentUpdating=true;
   const button = $("refresh-app");
   button.disabled = true;
   setStatus("update-status", "Проверяю обновления…");
@@ -1529,6 +1590,7 @@ async function refreshApp() {
       return;
     }
     const sameVersion = String(release.version) === APP_VERSION;
+    if(silent&&sameVersion)return;
     setStatus("update-status", sameVersion ? "Проверяю и восстанавливаю сохранение приложения…" : "Загружаю версию " + release.version + "…");
     const registration = await registerAppWorker();
     if (!registration) throw new Error("Браузер не поддерживает офлайн-запуск.");
@@ -1569,6 +1631,7 @@ async function refreshApp() {
     setStatus("update-status", "Обновление не выполнено: " + err.message, "bad");
   } finally {
     button.disabled = false;
+    state.silentUpdating=false;
   }
 }
 
@@ -1608,10 +1671,12 @@ function bind() {
   $("delete-dialog").addEventListener("cancel", event => { event.preventDefault(); cancelDeleteWaiting(); });
   $("sync").addEventListener("click", sync);
   $("save-settings").addEventListener("click", saveSettings);
+  $("save-message").addEventListener("click",()=>{localStorage.setItem("messageText",$("message-text").value);setStatus("message-status","Сообщение сохранено.","ok");});
+  renderSearchHistory().catch(()=>{});
   $("refresh-app").addEventListener("click", refreshApp);
   $("open-settings").addEventListener("click", toggleSettings);
   $("retry-models").addEventListener("click", startModels);
-  $("retry-models-settings").addEventListener("click", startModels);
+  
   $("continue-manual").addEventListener("click", hideWait);
   $("plate-mask").addEventListener("click", editPlate);
   $("plate").addEventListener("input", () => {
@@ -1647,7 +1712,8 @@ function bind() {
   renderPending().catch(() => {});
   initializeOffline().catch(error => setStatus("offline-status", error.message, "bad"));
   navigator.storage?.persist?.().catch(() => {});
-  refreshPlateImportStatus().then(missing=>{if(!missing.length)startModels();else setStatus("model-status","Выберите модели с телефона в настройках.");}).catch(e=>setStatus("model-status",e.message,"bad"));
+  startModels();
+  maybeAutoUpdate();
 }
 
 // Two-row plates are rearranged as image fragments before OCR.
@@ -1817,20 +1883,19 @@ function todayKey(date = new Date()) {
   return [date.getFullYear(), String(date.getMonth()+1).padStart(2,"0"), String(date.getDate()).padStart(2,"0")].join("-");
 }
 function searchHistory() {
-  try {
-    const saved=JSON.parse(localStorage.getItem("searchHistory") || "{}");
-    if (saved.day===todayKey() && Array.isArray(saved.items)) return saved;
-  } catch (_) {}
-  return {day:todayKey(),items:[]};
+ const start=new Date();start.setHours(0,0,0,0);start.setDate(start.getDate()-2);
+ try{const saved=JSON.parse(localStorage.getItem("searchHistory")||"{}");if(Array.isArray(saved.items))return {day:todayKey(),items:saved.items.filter(item=>Number.isFinite(item.time)&&item.time>=start.getTime()&&item.time<=Date.now())};}catch(_){}
+ return {day:todayKey(),items:[]};
 }
 function recordSearch(key) {
   const saved=searchHistory();
   saved.items=saved.items.filter(item=>item.key!==key);
   saved.items.unshift({key,time:Date.now()});
+  renderSearchHistory().catch(()=>{});
   try {localStorage.setItem("searchHistory",JSON.stringify(saved));} catch (_) {}
 }
 async function copyPhone(phone, button) {
-  const original=button.textContent;
+  const original=button.innerHTML;
   try {
     if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(phone);
     else {
@@ -1841,44 +1906,29 @@ async function copyPhone(phone, button) {
     }
     button.textContent="Скопировано";
   } catch (_) {button.textContent="Не скопировано";}
-  setTimeout(()=>{button.textContent=original;fitMessageButtons();},1800);
+  setTimeout(()=>{button.innerHTML=original;fitMessageButtons();},1800);
 }
-function closeSearchHistory() {
-  $("search-history").classList.add("hidden");
-  $("main-screen").classList.toggle("hidden", !$("settings").classList.contains("hidden"));
-  $("open-history").setAttribute("aria-expanded","false");
-  $("open-history").textContent="История";$("open-history").classList.remove("active");
-}
-async function openSearchHistory() {
-  $("settings").classList.add("hidden");
-  
-  $("open-settings").setAttribute("aria-expanded","false");
-  $("main-screen").classList.add("hidden");
-  $("search-history").classList.remove("hidden");
-  $("open-history").setAttribute("aria-expanded","true");
-  $("open-history").textContent="История";$("open-history").classList.add("active");
-  window.scrollTo(0,0);
-  try {await renderSearchHistory();} catch (_) {$("history-list").textContent="Не удалось открыть историю.";}
-}
+function closeSearchHistory(){setAppSection('car');}
+async function openSearchHistory(){setAppSection('car');await renderSearchHistory();$('search-history').scrollIntoView({behavior:'smooth'});}
 async function renderSearchHistory() {
   const request=state.historyRequest=(state.historyRequest||0)+1;
   const rows=await dbAll("directory");
   if (request!==state.historyRequest) return;
-  const entries=searchHistory().items;
+  const entries=searchHistory().items.filter(item=>contactsFor(rows.find(row=>row.key===item.key)).some(c=>Boolean(phoneHref(c.phone))));
   const box=$("history-list");
   box.innerHTML=entries.length ? entries.map(item=>{
     const contacts=contactsFor(rows.find(row=>row.key===item.key));
     return `<article class="history-item${state.historyHighlight?.key === item.key && state.historyHighlight.until > Date.now() ? " history-highlight" : ""}" data-key="${escapeHtml(item.key)}">
-      <button class="history-remove" data-action="remove-history" type="button" aria-label="Удалить номер из истории">×</button><div class="history-heading"><strong>${escapeHtml(formatPlate(item.key))}</strong><small>${new Date(item.time).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})}</small></div>
+      <button class="history-remove" data-action="remove-history" type="button" aria-label="Удалить номер из истории">×</button><div class="history-heading"><strong>${escapeHtml(formatPlate(item.key))}</strong><small>${new Date(item.time).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</small></div>
       ${contacts.length ? contacts.map((contact,i)=>`<div class="history-contact" data-index="${i}" data-contact-id="${escapeHtml(contact.id || "")}" data-contact-phone="${escapeHtml(contact.phone)}"><small>${escapeHtml(contact.phone)}</small><div class="history-actions">
         <button class="call" data-action="call" type="button" aria-label="Позвонить">☎</button>
-        <button class="ghost" data-action="sms" type="button">sms</button><button class="ghost" data-action="telegram" type="button">telegram</button>
-        <button class="ghost" data-action="copy" type="button" aria-label="Скопировать номер телефона">Копировать</button>
-        <button class="ghost" data-action="edit" type="button" aria-label="Редактировать контакт">✎</button>
+        <button class="ghost" data-action="sms" type="button" aria-label="Отправить SMS">${actionIcon("sms")}</button><button class="ghost" data-action="telegram" type="button" aria-label="Написать в Telegram">${actionIcon("telegram")}</button>
+        <button class="ghost" data-action="copy" type="button" aria-label="Скопировать номер телефона">${actionIcon("copy")}</button><button class="ghost history-add" data-action="add" type="button" aria-label="Добавить телефон">+ телефон</button>
+        <button class="ghost" data-action="edit" type="button" aria-label="Редактировать контакт">${actionIcon("edit")}</button>
         <button class="ghost" data-action="delete" type="button" aria-label="Удалить контакт">×</button>
       </div></div>`).join("") : '<small>Телефон не найден</small>'}
-      <button class="ghost history-add" data-action="add" type="button">+ телефон</button></article>`;
-  }).join("") : '<p class="help">Сегодня ещё не искали номера.</p>';
+      </article>`;
+  }).join("") : '<p class="help">За последние три дня поисков нет.</p>';
   box.querySelectorAll("[data-action]").forEach(button=>button.addEventListener("click",async()=>{
     const key=button.closest(".history-item").dataset.key;
     const index=Number(button.closest(".history-contact")?.dataset.index ?? -1);
@@ -2153,25 +2203,44 @@ function paddleDecode(output) {
   return {text,conf:count?sum/count:0};
 }
 
+function plateTextRows(items) {
+  const valid=items.map(item=>({...item,text:normalizePlate(item.text)})).filter(item=>item.text&&!/^RUS/.test(item.text)&&item.text!=="RU");
+  const anchors=valid.filter(item=>/^[ABEKMHOPCTYX0-9]+$/.test(item.text));
+  const rows=[];
+  for(const anchor of anchors){
+    const height=anchor.bottom-anchor.top,cy=(anchor.top+anchor.bottom)/2;
+    const row=valid.filter(item=>{
+      const h=item.bottom-item.top,y=(item.top+item.bottom)/2;
+      return h>=height*.4&&h<=height*2.2&&Math.abs(y-cy)<=Math.max(height,h)*.48;
+    }).sort((a,b)=>a.left-b.left);
+    const key=row.map(item=>items.findIndex(i=>i.left===item.left&&i.top===item.top)).join(',');
+    if(!rows.some(r=>r.key===key))rows.push({key,items:row,height});
+  }
+  return rows.sort((a,b)=>b.height-a.height);
+}
+
 function assemblePaddlePlate(items, square) {
   const clean=items.map(item=>({...item,text:normalizePlate(item.text)})).filter(item=>item.text && !/^RUS/.test(item.text) && item.text!=="RU");
   if(!square) {
-    const sorted=clean.sort((a,b)=>a.left-b.left);
-    const joined=sorted.map(item=>item.text).join("");
-    return extractRuPlate(joined) || "";
+    for(const row of plateTextRows(items)){
+      const plate=extractRuPlate(row.items.map(item=>item.text).join(""));
+      if(plate)return plate;
+    }
+    return "";
   }
   // Find the four-symbol upper group, then letters and region by their positions.
   const tops=clean.filter(item=>/^[ABEKMHOPCTYX]\d{3}$/.test(item.text));
   for(const upper of tops.sort((a,b)=>b.conf-a.conf)) {
-    const lower=clean.filter(item=>item!==upper && item.bottom-item.top>=(upper.bottom-upper.top)*.4 && (item.top+item.bottom)/2>(upper.top+upper.bottom)/2+(upper.bottom-upper.top)*.3).sort((a,b)=>a.left-b.left);
+    const lower=clean.filter(item=>item!==upper && item.bottom-item.top>=(upper.bottom-upper.top)*.4 && /^[ABEKMHOPCTYX0-9]+$/.test(item.text) && (item.top+item.bottom)/2>(upper.top+upper.bottom)/2+(upper.bottom-upper.top)*.3 && (item.top+item.bottom)/2<(upper.top+upper.bottom)/2+(upper.bottom-upper.top)*1.8).sort((a,b)=>a.left-b.left);
     const text=upper.text+lower.map(item=>item.text).join("");
     if(PLATE_RE.test(text)) return text;
   }
   // Handles detectors that split the top row into several text regions.
-  if(clean.length) {
-    const mid=clean.reduce((sum,item)=>sum+(item.top+item.bottom)/2,0)/clean.length;
-    const top=clean.filter(item=>(item.top+item.bottom)/2<mid).sort((a,b)=>a.left-b.left);
-    const lower=clean.filter(item=>(item.top+item.bottom)/2>=mid).sort((a,b)=>a.left-b.left);
+  const large=clean.filter(item=>/^[ABEKMHOPCTYX0-9]+$/.test(item.text)&&item.bottom-item.top>=Math.max(...clean.map(c=>c.bottom-c.top))*.4);
+  if(large.length) {
+    const mid=large.reduce((sum,item)=>sum+(item.top+item.bottom)/2,0)/large.length;
+    const top=large.filter(item=>(item.top+item.bottom)/2<mid).sort((a,b)=>a.left-b.left);
+    const lower=large.filter(item=>(item.top+item.bottom)/2>=mid).sort((a,b)=>a.left-b.left);
     const text=[...top,...lower].map(item=>item.text).join("");
     if(PLATE_RE.test(text)) return text;
   }
@@ -2185,7 +2254,7 @@ async function readPaddlePlate(crop) {
   const w=Math.max(32,Math.round(crop.width*scale/32)*32),h=Math.max(32,Math.round(crop.height*scale/32)*32);
   const result=await det.run({[det.inputNames[0]]:paddleInput(crop,h,w,true)});
   const map=result[det.outputNames[0]],mh=map.dims[map.dims.length-2],mw=map.dims[map.dims.length-1];
-  const boxes=paddleTextBoxes(map.data,mw,mh,crop.width,crop.height),items=[];
+  const boxes=paddleTextBoxes(map.data,mw,mh,crop.width,crop.height).filter(box=>{const center=(box.top+box.bottom)/2;return center>=crop.height*.05&&center<=crop.height*.90;}),items=[];
   for(const box of boxes) {
     const canvas=document.createElement("canvas"); canvas.width=Math.max(1,Math.ceil(box.right-box.left));canvas.height=Math.max(1,Math.ceil(box.bottom-box.top));
     canvas.getContext("2d").drawImage(crop,box.left,box.top,box.right-box.left,box.bottom-box.top,0,0,canvas.width,canvas.height);
@@ -2204,15 +2273,15 @@ const PADDLE_CHARACTERS = ["", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
 bind();
 
 $("open-car").addEventListener("click",()=>setAppSection("car"));
-$("load-plate-models").addEventListener("click",()=>$("plate-model-files").click());
-async function refreshPlateImportStatus(){
- const required=Object.keys(MODEL_FILES),loaded=[],missing=[];
- for(const name of required){const saved=await dbGet('models',name);let valid=false;if(saved){try{await validateDownloadedModel(saved.buf,name);valid=true;}catch(_){}}(valid?loaded:missing).push(name);modelProgress(name,valid?'Загружена':'Нужно загрузить');}
- $('plate-import-status').textContent='Нужны: '+required.join(', ')+'.\nЗагружены: '+(loaded.join(', ')||'нет')+'.\nОсталось: '+(missing.join(', ')||'все модели загружены')+'.';return missing;
+
+function maybeAutoUpdate(){
+ if(state.stream||state.shooting||state.silentUpdating||document.visibilityState==='hidden')return;
+ const now=Date.now(),last=Number(localStorage.getItem('nomera-last-auto-update'))||0;
+ if(now-last<14*24*60*60*1000)return;
+ localStorage.setItem('nomera-last-auto-update',String(now));
+ refreshApp({silent:true});
 }
-$('plate-model-files').addEventListener('change',async()=>{
- const input=$('plate-model-files'),button=$('load-plate-models');button.disabled=true;const errors=[];let count=0;
- try{for(const file of input.files){try{if(!MODEL_FILES[file.name])throw new Error('неизвестное имя модели');const buf=await file.arrayBuffer();await validateDownloadedModel(buf,file.name);await dbPut('models',{name:file.name,buf});count++;}catch(e){errors.push(file.name+': '+e.message);}}
- const missing=await refreshPlateImportStatus();setStatus('model-status','Сохранено файлов: '+count+(errors.length?'. '+errors.join('; '):''),errors.length?'bad':'ok');if(!missing.length){state.det=null;state.ocr.paddleDet=null;state.ocr.paddleRec=null;await startModels();}
- }catch(e){setStatus('model-status',e.message,'bad');}finally{button.disabled=false;input.value='';}
-});
+document.addEventListener('visibilitychange',maybeAutoUpdate);
+setInterval(maybeAutoUpdate,60*60*1000);
+
+window.addEventListener("online",()=>{if(!state.stream&&!state.loadingModels)loadAllModels().catch(e=>setStatus("model-status",e.message,"bad"));});
